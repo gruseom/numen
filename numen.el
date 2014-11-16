@@ -61,26 +61,26 @@ dropped from the string. Does nothing if TABLE is nil."
   :prefix "numen-"
   :group 'tools)
 
-(defface numen-backtrace-face '((t (:inherit font-lock-variable-name-face))) "Face for backtraces in the Numen REPL.")
-(defface numen-backtrace-bold-face '((t (:inherit numen-backtrace-face :weight bold))) "Bold face for backtraces in the Numen REPL.")
-(defface numen-boolean-face '((t (:inherit font-lock-builtin-face))) "Face for displaying boolean results in the Numen REPL.")
+(defface numen-backtrace-face '((t (:inherit font-lock-variable-name-face))) "Face for backtraces in Numen.")
+(defface numen-backtrace-bold-face '((t (:inherit numen-backtrace-face :weight bold))) "Bold face for backtraces in Numen.")
+(defface numen-boolean-face '((t (:inherit font-lock-builtin-face))) "Face for displaying boolean results in Numen.")
 (defface numen-breakpoint-face '((t (:inherit font-lock-warning-face))) "Face for breakpoint icon in fringe.")
-(defface numen-breaklist-face '((t (:inherit font-lock-comment-face))) "Face for breakpoints in the Numen REPL.")
-(defface numen-console-face '((t (:inherit font-lock-doc-face))) "Face for displaying server console output in the Numen REPL.")
-(defface numen-date-face '((t (:inherit font-lock-type-face))) "Face for displaying date values in the Numen REPL.")
-(defface numen-omitted-face '((t (:inherit numen-null-face))) "Face for printing missing or hidden data in the Numen REPL.")
+(defface numen-breaklist-face '((t (:inherit font-lock-comment-face))) "Face for breakpoints in Numen.")
+(defface numen-console-face '((t (:inherit font-lock-doc-face))) "Face for displaying server console output in Numen.")
+(defface numen-date-face '((t (:inherit font-lock-type-face))) "Face for displaying date values in Numen.")
+(defface numen-omitted-face '((t (:inherit numen-null-face))) "Face for printing missing or hidden data in Numen.")
 (defface numen-omitted-italic-face '((t (:inherit numen-omitted-face :slant italic))) "Like `numen-omitted-face' but italic.")
-(defface numen-error-face '((t (:inherit font-lock-warning-face))) "Face for errors in the Numen REPL.")
-(defface numen-error-message-face '((t (:inherit escape-glyph))) "Face for error message in the Numen REPL.")
+(defface numen-error-face '((t (:inherit font-lock-warning-face))) "Face for errors in Numen.")
+(defface numen-error-message-face '((t (:inherit escape-glyph))) "Face for error message in Numen.")
 (defface numen-frame-arrow-face '((t (:inherit font-lock-function-name-face))) "Face for displaying arrow icon next to a stack frame location in the Numen debugger.")
 (defface numen-frame-arrow-face-top '((t (:inherit font-lock-variable-name-face))) "Face for displaying arrow icon next to the location of the top stack frame in the Numen debugger.")
-(defface numen-function-face '((t (:inherit font-lock-function-name-face))) "Face for displaying function results in the Numen REPL.")
-(defface numen-info-face '((t (:inherit font-lock-variable-name-face))) "Face for informational output in the Numen REPL.")
-(defface numen-null-face '((t (:inherit shadow))) "Face for displaying null in the Numen REPL.")
-(defface numen-number-face '((t (:inherit font-lock-constant-face))) "Face for displaying numeric results in the Numen REPL.")
-(defface numen-object-key-face '((t (:inherit font-lock-keyword-face))) "Face for displaying object keys in the Numen REPL.")
-(defface numen-prompt-face '((t (:inherit font-lock-keyword-face))) "Face for the Numen REPL prompt.")
-(defface numen-string-face '((t (:inherit font-lock-string-face))) "Face for displaying string results in the Numen REPL.")
+(defface numen-function-face '((t (:inherit font-lock-function-name-face))) "Face for displaying function results in Numen.")
+(defface numen-info-face '((t (:inherit font-lock-variable-name-face))) "Face for informational output in Numen.")
+(defface numen-null-face '((t (:inherit shadow))) "Face for displaying null in Numen.")
+(defface numen-number-face '((t (:inherit font-lock-constant-face))) "Face for displaying numeric results in Numen.")
+(defface numen-object-key-face '((t (:inherit font-lock-keyword-face))) "Face for displaying object keys in Numen.")
+(defface numen-prompt-face '((t (:inherit font-lock-keyword-face))) "Face for the Numen prompt.")
+(defface numen-string-face '((t (:inherit font-lock-string-face))) "Face for displaying string results in Numen.")
 
 (eval-and-compile
   (defvar numen-directory
@@ -134,14 +134,14 @@ dropped from the string. Does nothing if TABLE is nil."
 (defvar numen-input-ring-size 100)
 (defvar numen-print-wrap 80 "Maximum number of characters a printed object may require before being broken into multiple lines in the REPL.")
 
-(defvar numen-server-message-hook nil
+(defvar numen-repl-hook nil
   "List of functions of one argument MSG that the Numen client
-calls to handle any messages from the Numen server that it
-doesn't recognize. The first one to return non-nil is considered
-to have handled the message.")
+calls with any message from the eval process that it doesn't
+recognize. The first one to return non-nil is considered to have
+handled the message.")
 
 (defvar numen-startup-hook nil
-  "Hook that gets called after the Numen REPL and server have been started.")
+  "Hook that gets called after connecting to the eval process.")
 
 ;;; for all buffers
 (defvar numen-buffer-id nil "Unique ID assigned to each Numen buffer so that server messages can be sent to the right place.")
@@ -161,7 +161,7 @@ window to display the buffer when it isn't already showing.")
 (defvar numen-pre-debugging-state nil "Stuff we want to restore when exiting the debugger, like the prior window configuration.")
 (defvar numen-search-prefix nil)
 (defvar numen-selected-frame-ids nil "A list of the same length as `numen-call-stacks' containing the id of the currently selected frame from each stack.")
-(defvar numen-server-process nil)
+(defvar numen-childproc nil "The process doing evals for Numen, if Emacs created it.")
 (defvar numen-views nil "Hash table storing view data for the values in `numen-evals'.")
 
 ;;; for secondary Numen buffers
@@ -186,7 +186,7 @@ window to display the buffer when it isn't already showing.")
   (set (make-local-variable 'numen-pre-debugging-state) nil)
   (set (make-local-variable 'numen-search-prefix) nil)
   (set (make-local-variable 'numen-selected-frame-ids) nil)
-  (set (make-local-variable 'numen-server-process) nil)
+  (set (make-local-variable 'numen-childproc) nil)
   (set (make-local-variable 'numen-preferred-window) (selected-window))
   (set (make-local-variable 'numen-views) (make-hash-table)))
 
@@ -215,7 +215,7 @@ stack frames while debugging.
     (with-current-buffer (get-buffer-create "*Numen*")
       (add-hook 'kill-buffer-hook 'numen-stop nil t)
       (setq numen-default-repl-buffer (current-buffer))
-      (when numen-server-process
+      (when numen-childproc
         (message "Restarting Numen...")
         (numen-stop))
       (numen-enter-mode)
@@ -283,7 +283,7 @@ stack frames while debugging.
 (defun numen-launch-server ()
   (when numen-lumen-p
     (setenv "LUMEN_HOST" "node --expose_debug_as=v8debug"))
-  (let* ((server-buffer (generate-new-buffer " *numen-server*"))
+  (let* ((server-buffer (generate-new-buffer " *numen-childproc*"))
          (proc (let ((process-connection-type nil)) ; use a pipe, not a PTY. see elisp reference.
                  (if numen-lumen-p
                      (apply 'start-process "lumen" server-buffer "lumen"
@@ -291,50 +291,55 @@ stack frames while debugging.
                    (apply 'start-process "node" server-buffer "node"
                           (list "--expose_debug_as=v8debug" "-e"
                                 (format "require('%snumen.js');launch('js')" numen-directory)))))))
-    (set-process-filter proc 'numen-server-filter)
-    (set-process-sentinel proc 'numen-server-sentinel)
+    (set-process-filter proc 'numen-eval-listener)
+    (set-process-sentinel proc 'numen-childproc-sentinel)
     (set-process-query-on-exit-flag proc nil)
-    (set-process-coding-system proc 'utf-8 'utf-8)
-    (setq numen-server-process proc)
+    (set-process-coding-system proc 'utf-8 'utf-8) ;; tempdg: want for conn too
+    (setq numen-childproc proc)
     (with-current-buffer server-buffer
       (set (make-local-variable 'numen-buffer-id) (incf numen-counter))
       (set (make-local-variable 'numen-repl-buffer) (with-repl-buffer (current-buffer))))))
 
-(defun numen-server-sentinel (proc message)
+(defun numen-childproc-sentinel (proc message)
   (with-repl-buffer
-   (message "Numen server quit unexpectedly: %s" (numen-strip-newlines message))
+   (message "Numen child process quit unexpectedly: %s" (numen-strip-newlines message))
    (numen-stop)
    (setq mode-name "Numen:disconnected")))
 
-(defun numen-server-filter (proc string)
+(defun numen-eval-listener (proc string)
+  "Write some data received from the eval process to the
+connection buffer, then call a handler to read and act on it any
+complete messages."
   (with-current-buffer (process-buffer proc)
     (goto-char (point-max))
     (insert string)
-    (numen-handle-server-message)))
+    (numen-handle-eval-messages)))
 
-(defun numen-kill-server-process ()
-  (when numen-server-process
-    (set-process-sentinel numen-server-process nil)
-    (kill-buffer (process-buffer numen-server-process))
-    (delete-process numen-server-process)
-    (setq numen-server-process nil)))
+(defun numen-kill-childproc ()
+  (when numen-childproc
+    (set-process-sentinel numen-childproc nil)
+    (kill-buffer (process-buffer numen-childproc))
+    (delete-process numen-childproc)
+    (setq numen-childproc nil)))
 
 ;;;; communication with server
 
 (defun numen-send-request (req &optional stuff buffer-id)
   (unless buffer-id (setq buffer-id numen-buffer-id))
-  (if (numen-process-running-p numen-server-process)
+  (if (numen-process-running-p numen-childproc)
       (let ((json (json-encode (append req (list :stuff (append stuff (list :buffer buffer-id)))))))
         (cond ((in-debugger-p)
-               (process-send-string numen-server-process json))
+               (process-send-string numen-childproc json))
               (t (let ((msg (format "%s%s\n" (length json) json))) ; toplevel is asynchronous and requires length-encoding
-                   (process-send-string numen-server-process msg)))))
+                   (process-send-string numen-childproc msg)))))
     (numen-output "Not running\n" 'numen-info-face)))
 
-(defun numen-read-server-message ()
+(defun numen-read-eval-message ()
+  "Look for a message from the eval process in the connection buffer.
+If there is a compete one, extract and return it."
   (let ((start (point-min)))
     (goto-char start)
-    (cond ((search-forward "\0" nil t)
+    (cond ((search-forward "\0" nil t) ; JSON messages start with this guard character
            (cond ((= (point) (1+ start)) (numen-read-json))
                  (t (delete-and-extract-region start (1- (point))))))
           ((> (point-max) start)
@@ -409,9 +414,10 @@ stack frames while debugging.
 
 ;;;; responses
 
-(defun numen-handle-server-message ()
+(defun numen-handle-eval-messages ()
+  "Read and process messages sent by the eval process."
   (let ((msg nil))
-    (while (setq msg (numen-read-server-message))
+    (while (setq msg (numen-read-eval-message))
       (acond ((stringp msg) (numen-output msg 'numen-console-face))
              ((hget msg :evaluation) (numen-handle-server-value it))
              ((hget msg :supplement)
@@ -429,7 +435,7 @@ stack frames while debugging.
              ((hget msg :in-place) (numen-handle-in-place-output it (hget msg :preserve-p)))
              ((hget msg :emacs-eval) (numen-handle-emacs-eval-request it (hget msg :callback-id)))
              ((hget msg :status-message) (message it))
-             (t (unless (loop for handler in numen-server-message-hook do
+             (t (unless (loop for handler in numen-repl-hook do
                               (when (funcall handler msg) (return t)))
                   (let ((str (format "Unrecognized server message: %s\n" (json-encode msg))))
                     (numen-output str 'numen-error-face))))))))
@@ -587,7 +593,7 @@ stack frames while debugging.
       (numen-exit-debugger)
       (numen-end-debugging-session))
     (numen-kill-all-secondary-buffers)
-    (numen-kill-server-process)))
+    (numen-kill-childproc)))
 
 (defun numen-exit-debugger ()
   (with-repl-buffer
