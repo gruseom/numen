@@ -66,7 +66,7 @@ dropped from the string. Does nothing if TABLE is nil."
 (defface numen-boolean-face '((t (:inherit font-lock-builtin-face))) "Face for displaying boolean results in Numen.")
 (defface numen-breakpoint-face '((t (:inherit font-lock-warning-face))) "Face for breakpoint icon in fringe.")
 (defface numen-breaklist-face '((t (:inherit font-lock-comment-face))) "Face for breakpoints in Numen.")
-(defface numen-console-face '((t (:inherit font-lock-doc-face))) "Face for displaying server console output in Numen.")
+(defface numen-console-face '((t (:inherit font-lock-doc-face))) "Face for displaying eval process console output in Numen.")
 (defface numen-date-face '((t (:inherit font-lock-type-face))) "Face for displaying date values in Numen.")
 (defface numen-omitted-face '((t (:inherit numen-null-face))) "Face for printing missing or hidden data in Numen.")
 (defface numen-omitted-italic-face '((t (:inherit numen-omitted-face :slant italic))) "Like `numen-omitted-face' but italic.")
@@ -144,7 +144,7 @@ handled the message.")
   "Hook that gets called after connecting to the eval process.")
 
 ;;; for all buffers
-(defvar numen-buffer-id nil "Unique ID assigned to each Numen buffer so that server messages can be sent to the right place.")
+(defvar numen-buffer-id nil "Unique ID assigned to each Numen buffer so that eval process messages can be sent to the right place.")
 (defvar numen-preferred-window nil
   "Buffer-local variable. When set, Numen will always choose this
 window to display the buffer when it isn't already showing.")
@@ -236,7 +236,7 @@ stack frames while debugging.
 
 (defun numen-start ()
   (numen-stop)
-  (numen-launch-server)
+  (numen-launch-childproc)
   (run-hooks 'numen-startup-hook))
 
 ;;;; process
@@ -258,9 +258,16 @@ stack frames while debugging.
 
 (eval-and-compile
   (defun numen-find-repl-buffer ()
-    (cond ((not (buffer-live-p numen-default-repl-buffer)) nil) ; there are no repl buffers
-          ((in-repl-p) (current-buffer)) ; you are a repl buffer
-          ((buffer-live-p numen-repl-buffer) numen-repl-buffer) ; you have a repl buffer (you're a server process or script buffer or inspector buffer)
+    (cond ((not (buffer-live-p numen-default-repl-buffer))
+           ;; there are no repl buffers
+           nil)
+          ((in-repl-p)
+           ;; you are a repl buffer
+           (current-buffer))
+          ((buffer-live-p numen-repl-buffer)
+           ;; you are associated with a repl buffer (you're a
+           ;; connection buffer, script buffer, or inspector buffer)
+           numen-repl-buffer)
           (t numen-default-repl-buffer))))
 
 (defmacro with-repl-buffer (&rest body)
@@ -280,15 +287,15 @@ stack frames while debugging.
 (defmacro in-debugger-p ()
   '(with-repl-buffer numen-call-stacks))
 
-(defun numen-launch-server ()
+(defun numen-launch-childproc ()
   (when numen-lumen-p
     (setenv "LUMEN_HOST" "node --expose_debug_as=v8debug"))
-  (let* ((server-buffer (generate-new-buffer " *numen-childproc*"))
+  (let* ((childproc-buffer (generate-new-buffer " *numen-childproc*"))
          (proc (let ((process-connection-type nil)) ; use a pipe, not a PTY. see elisp reference.
                  (if numen-lumen-p
-                     (apply 'start-process "lumen" server-buffer "lumen"
+                     (apply 'start-process "lumen" childproc-buffer "lumen"
                             (list (concat numen-directory "numen.js") "-e" "(launch 'lumen)"))
-                   (apply 'start-process "node" server-buffer "node"
+                   (apply 'start-process "node" childproc-buffer "node"
                           (list "--expose_debug_as=v8debug" "-e"
                                 (format "require('%snumen.js');launch('js')" numen-directory)))))))
     (set-process-filter proc 'numen-eval-listener)
@@ -296,7 +303,7 @@ stack frames while debugging.
     (set-process-query-on-exit-flag proc nil)
     (set-process-coding-system proc 'utf-8 'utf-8) ;; tempdg: want for conn too
     (setq numen-childproc proc)
-    (with-current-buffer server-buffer
+    (with-current-buffer childproc-buffer
       (set (make-local-variable 'numen-buffer-id) (incf numen-counter))
       (set (make-local-variable 'numen-repl-buffer) (with-repl-buffer (current-buffer))))))
 
@@ -305,6 +312,13 @@ stack frames while debugging.
    (message "Numen child process quit unexpectedly: %s" (numen-strip-newlines message))
    (numen-stop)
    (setq mode-name "Numen:disconnected")))
+
+(defun numen-kill-childproc ()
+  (when numen-childproc
+    (set-process-sentinel numen-childproc nil)
+    (kill-buffer (process-buffer numen-childproc))
+    (delete-process numen-childproc)
+    (setq numen-childproc nil)))
 
 (defun numen-eval-listener (proc string)
   "Write some data received from the eval process to the
@@ -315,34 +329,32 @@ complete messages."
     (insert string)
     (numen-handle-eval-messages)))
 
-(defun numen-kill-childproc ()
-  (when numen-childproc
-    (set-process-sentinel numen-childproc nil)
-    (kill-buffer (process-buffer numen-childproc))
-    (delete-process numen-childproc)
-    (setq numen-childproc nil)))
-
-;;;; communication with server
+;;;; communication with eval process
 
 (defun numen-send-request (req &optional stuff buffer-id)
   (unless buffer-id (setq buffer-id numen-buffer-id))
   (if (numen-process-running-p numen-childproc)
       (let ((json (json-encode (append req (list :stuff (append stuff (list :buffer buffer-id)))))))
-        (cond ((in-debugger-p)
+        (cond ((in-debugger-p) ; debugger calls are synchronous, so don't
+               ;; require length encoding
                (process-send-string numen-childproc json))
-              (t (let ((msg (format "%s%s\n" (length json) json))) ; toplevel is asynchronous and requires length-encoding
+              (t (let ((msg (format "%s%s\n" (length json) json))) ; length encoded
                    (process-send-string numen-childproc msg)))))
     (numen-output "Not running\n" 'numen-info-face)))
 
 (defun numen-read-eval-message ()
-  "Look for a message from the eval process in the connection buffer.
-If there is a compete one, extract and return it."
+  "Extract the next complete message, if one exists, from the
+socket buffer. Messages may be either JSON or plain text."
   (let ((start (point-min)))
     (goto-char start)
-    (cond ((search-forward "\0" nil t) ; JSON messages start with this guard character
+    (cond ((search-forward "\0" nil t) ; JSON messages begin with this guard character
            (cond ((= (point) (1+ start)) (numen-read-json))
-                 (t (delete-and-extract-region start (1- (point))))))
+                 (t ;; there's something before the first JSON
+                  ;; message. extract it as text and pick the JSON up
+                  ;; during the next turn of the read loop
+                  (delete-and-extract-region start (1- (point))))))
           ((> (point-max) start)
+           ; there is no JSON message. extract as text
            (delete-and-extract-region start (point-max))))))
 
 (defun numen-read-json ()
@@ -419,7 +431,7 @@ If there is a compete one, extract and return it."
   (let ((msg nil))
     (while (setq msg (numen-read-eval-message))
       (acond ((stringp msg) (numen-output msg 'numen-console-face))
-             ((hget msg :evaluation) (numen-handle-server-value it))
+             ((hget msg :evaluation) (numen-report-evaluation it))
              ((hget msg :supplement)
               (hbind (spot buffer) (hget msg :stuff)
                 (numen-handle-supplement (hget msg :id) it (numen-listify spot) buffer)))
@@ -437,15 +449,18 @@ If there is a compete one, extract and return it."
              ((hget msg :status-message) (message it))
              (t (unless (loop for handler in numen-repl-hook do
                               (when (funcall handler msg) (return t)))
-                  (let ((str (format "Unrecognized server message: %s\n" (json-encode msg))))
+                  (let ((str (format "Unrecognized repl message: %s\n" (json-encode msg))))
                     (numen-output str 'numen-error-face))))))))
 
 (defmacro vkey (val) "Printed key representing the path to VAL." `(gethash "vkey" ,val))
 (defmacro id (scope) "ID number of the evaluation that SCOPE is part of." `(car (last ,scope)))
 
-(defun numen-handle-server-value (server-value)
+(defun numen-report-evaluation (evaluation)
+  "Extract the data and metadata from an EVALUATION sent by the
+eval process, save it for the user to inspect later, and display
+it appropriately in the Numen buffer."
   (with-repl-buffer
-   (hbind (value id breaking) server-value
+   (hbind (value id breaking) evaluation
      (hbind (locals truelen) value
        (cond ((and locals (= 0 (or truelen 0)))
               (message "No local variables"))
@@ -460,7 +475,8 @@ If there is a compete one, extract and return it."
   (assert buffer-id)
   (with-numen-buffer-by-id buffer-id
     (assert numen-evals)
-    (cond ((equal supplement "deleted") (message "Server has deleted value %s" id))
+    (cond ((equal supplement "deleted")
+           (message "Eval process no longer has value %s" id))
           (t (loop for rec across supplement do
                    (hbind (scope details from fold-level) rec
                      (wlet (val (numen-find-val-or-report-deletion (numen-listify scope)))
@@ -494,7 +510,7 @@ If there is a compete one, extract and return it."
      (setq numen-pre-debugging-state (list :window-config (current-window-configuration))))
    (numen-update-mode-line t)
    (when e
-     (numen-handle-server-value e))
+     (numen-report-evaluation e))
    (when (> (length server-stack) 0)
      (numen-push-call-stack (numen-listify server-stack))
      (let ((f (caar numen-call-stacks)))
@@ -1894,9 +1910,9 @@ the buffer and return to REPL."
 ;;;; eval store
 
 (defun numen-have-len (val)
-  "If VAL is a composite object, return the number of its child
-elements that have been received from the server. If VAL is a
-string, return the number of characters received from server."
+  "If VAL is a composite, return the number of its children that
+we have received from the eval process. If VAL is a string,
+return the number of characters received."
   (length (or (hget val :vals) (hget val :str))))
 
 (defun numen-scope-next-sibling (scope)
