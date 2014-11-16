@@ -120,10 +120,8 @@ function source (script) {
     return scriptObj != null ? scriptObj.source : null;
 }
 
-function onUncaughtException (e) {
-    var obj = clientValue(e);
-    obj.uncaught = true;
-    clientSend({ 'evaluation' : obj });
+function sendException (e) {
+    clientSend({ 'evaluation' : clientValue(e) });
 }
 
 // breakpoints
@@ -279,7 +277,7 @@ function runDebuggerLoop (exec_state) {
             }
         }
         catch (e) {
-            onUncaughtException(e);
+            sendException(e);
         }
     }
 }
@@ -633,6 +631,6 @@ launch = function (lang) {
   runningInLumen = (lang == "lumen");
   var buffer = { 'str' : '' };
   process.stdin.on('data', function (data) { readAndRespond(buffer, data); });
-  process.on('uncaughtException', onUncaughtException);
+  process.on('uncaughtException', sendException);
   process.stdin.resume();
 }

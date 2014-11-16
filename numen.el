@@ -445,14 +445,14 @@ If there is a compete one, extract and return it."
 
 (defun numen-handle-server-value (server-value)
   (with-repl-buffer
-   (hbind (value id breaking uncaught) server-value
+   (hbind (value id breaking) server-value
      (hbind (locals truelen) value
        (cond ((and locals (= 0 (or truelen 0)))
               (message "No local variables"))
              (t (numen-store-val value id)
                 (with-output-before-prompt
-                 (cond (breaking (numen-insert "Throwing "))
-                       (uncaught (numen-insert "Uncaught ")))
+                 (when breaking
+                   (numen-insert "Throwing "))
                  (let ((view (setf (gethash id numen-views) (numen-make-view))))
                    (numen-insert-value id view)))))))))
 
