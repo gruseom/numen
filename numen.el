@@ -120,8 +120,8 @@ dropped from the string. Does nothing if TABLE is nil."
   (define-key map (kbd "C-c M-o") 'numen-clear-repl-buffer)
   (define-key map (kbd "C-c C-n") 'numen-goto-next-prompt)
   (define-key map (kbd "C-c C-p") 'numen-goto-previous-prompt)
-  (define-key map (kbd "C-c C-c") 'numen-reset-server)
-  (define-key map (kbd "C-c C-x") 'numen-quit)
+  (define-key map (kbd "C-c C-c") (lambda () (interactive) (numen-start)))
+  (define-key map (kbd "C-c C-x") 'numen-exit)
   map)
 
 (defvar numen-mode-map (numen-assign-major-mode-bindings (make-sparse-keymap)))
@@ -213,17 +213,17 @@ stack frames while debugging.
     (setq compiler-function 'identity))
   (let ((invocation-directory default-directory))
     (with-current-buffer (get-buffer-create "*Numen*")
-      (add-hook 'kill-buffer-hook 'numen-terminate nil t)
+      (add-hook 'kill-buffer-hook 'numen-stop nil t)
       (setq numen-default-repl-buffer (current-buffer))
       (when numen-server-process
-        (message "Restarting...")
-        (numen-terminate))
+        (message "Restarting Numen...")
+        (numen-stop))
       (numen-enter-mode)
       (set (make-local-variable 'numen-input-compiler-function) compiler-function)
       (set (make-local-variable 'numen-lumen-p) lumenp)
       (numen-insert-prompt)
       (let ((default-directory invocation-directory))
-        (numen-reset-server))
+        (numen-start))
       (numen-switch-to-repl))))
 
 (defun numen-enter-mode ()
@@ -234,9 +234,8 @@ stack frames while debugging.
     (when (ring-p ring)
       (setq numen-input-ring ring))))
 
-(defun numen-reset-server ()
-  (interactive)
-  (numen-kill-server-process)
+(defun numen-start ()
+  (numen-stop)
   (numen-launch-server)
   (run-hooks 'numen-startup-hook))
 
@@ -304,7 +303,7 @@ stack frames while debugging.
 (defun numen-server-sentinel (proc message)
   (with-repl-buffer
    (message "Numen server quit unexpectedly: %s" (numen-strip-newlines message))
-   (numen-terminate)
+   (numen-stop)
    (setq mode-name "Numen:disconnected")))
 
 (defun numen-server-filter (proc string)
@@ -528,10 +527,10 @@ stack frames while debugging.
   (acond ((numen-buffer-file) (numen-request-load-file it))
          (t (message "%s is not a file" (buffer-name)))))
 
-(defun numen-quit ()
+(defun numen-exit ()
   (interactive)
   (with-repl-buffer
-   (numen-terminate)
+   (numen-stop)
    (kill-buffer)))
 
 (defun numen-debugger-backtrace ()
@@ -582,7 +581,7 @@ stack frames while debugging.
          (set-window-configuration config)))
      (setq numen-pre-debugging-state nil))))
 
-(defun numen-terminate ()
+(defun numen-stop () ; should be idempotent so `numen-start' can call it
   (let ((inhibit-read-only t))
     (when (in-debugger-p)
       (numen-exit-debugger)
