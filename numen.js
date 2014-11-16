@@ -1,10 +1,11 @@
 var vm = require('vm');
 var fs = require('fs');
 
+global.D = v8debug.Debug; // the V8 debugger
+
 global.require = require;
 global.exports = {};
 global.module = {};
-global.D = v8debug.Debug;
 clearAllBreakpoints(); // clear breakpoint that gets set on startup
 
 // responses
@@ -83,13 +84,13 @@ function clientValue (val, depth, batch) {
     return { 'value' : represent(val, null, depth, batch), 'id' : evalID };
 }
 
-var runningInLumen = false;
+var runningLumen = false;
 
 function evaluateAtTopLevel (code, breakAtStart) {
     if (breakAtStart) {
         D.breakExecution();
     }
-    if (runningInLumen) {
+    if (runningLumen) {
         return clientValue(eval(read_from_string(code)));
     } else {
         return clientValue(vm.runInThisContext(code, uniqueEvalScriptName()));
@@ -243,10 +244,10 @@ function runDebuggerLoop (exec_state) {
         try {
             var res = null;
             // The debugger loop must block until a debug command is
-            // issued. If we tried to read from stdin asynchronously,
-            // this function would return immediately, in which case
-            // the debugger would always "continue" before the client
-            // ever knew that a breakpoint had been hit.
+            // issued. If we tried to read asynchronously, this
+            // function would return immediately, in which case the
+            // debugger would always "continue" before the client ever
+            // knew that a breakpoint had been hit.
             var req = waitForDebuggerCommand();
             if (req) {
                 var frame = req.frame_index != null ? v8Frame(exec_state, req.frame_index) : null;
@@ -481,10 +482,10 @@ function v8StackTraceAsNumenArray (stack) {
         }
         return arr;
     } catch (e) {
-        console.log('Numen failed to process the following stack trace...');
-        console.log(stack);
-        console.log('...because this happened while trying to parse it:');
-        console.log(e.stack);
+        log('Numen failed on the following stack trace...');
+        log(stack);
+        log('...because this happened while trying to parse it:');
+        log(e.stack);
     }
 }
 
@@ -603,8 +604,8 @@ function extractToplevelRequest (buffer) {
         try {
             req = JSON.parse(str.substr(0, need));
         } catch (e) {
-            console.log("Failed to parse " + need + " chars from:");
-            console.log(buffer);
+            log("Failed to parse " + need + " chars from:");
+            log(buffer);
         }
         buffer.str = str.substr(need+1); // strip terminating newline
         delete buffer.need;
@@ -627,8 +628,12 @@ function write (string) {
     process.stdout.write(string + '\n');
 }
 
+function log (string) {
+    console.log(string);
+}
+
 launch = function (lang) {
-    runningInLumen = (lang == "lumen");
+    runningLumen = ((lang || "").toLowerCase() == "lumen");
     var buffer = { 'str' : '' };
     process.stdin.on('data', function (data) { readAndRespond(buffer, data); });
     process.on('uncaughtException', sendException);
