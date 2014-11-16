@@ -129,10 +129,12 @@ dropped from the string. Does nothing if TABLE is nil."
 ;;; global vars
 (defvar numen-breakpoints nil)
 (defvar numen-counter 0 "Integer that is incremented every time Numen needs a unique value.")
+(defvar numen-default-host "localhost" "The server that Numen will try to connect to by default when it isn't creating a child process.")
 (defvar numen-default-repl-buffer nil)
 (defvar numen-default-value-depth 2 "Depth at which Numen will print an ellipsis rather than display the elements of an array or object.")
 (defvar numen-input-ring-size 100)
 (defvar numen-print-wrap 80 "Maximum number of characters a printed object may require before being broken into multiple lines in the REPL.")
+(defvar numen-default-port 7777 "The port that Numen will use to connect to the eval server if the user doesn't specify one.")
 
 (defvar numen-repl-hook nil
   "List of functions of one argument MSG that the Numen client
@@ -152,16 +154,18 @@ window to display the buffer when it isn't already showing.")
 ;;; for repl buffer
 (defvar numen-call-stacks nil "List of call stacks representing possibly nested debugger breaks.")
 (defvar numen-evals nil "Hash table of up to `numen-max-stored-eval-results' evaluation results, keyed by ID received from server.")
+(defvar numen-host nil "The server the eval process is running on. NIL when Numen creates the eval process.")
 (defvar numen-input-compiler nil "A function through which Numen passes source code for evaluation, sending what it returns to the eval process.")
 (defvar numen-input-ring nil)
 (defvar numen-input-ring-index nil)
 (defvar numen-lumen-p nil "When true, Numen sends code to a Lumen process; when false, to a Node.js process.")
 (defvar numen-markers nil)
 (defvar numen-max-stored-eval-results nil)
+(defvar numen-port nil "Port by which Numen connects to a remote eval process.")
 (defvar numen-pre-debugging-state nil "Stuff we want to restore when exiting the debugger, like the prior window configuration.")
 (defvar numen-search-prefix nil)
 (defvar numen-selected-frame-ids nil "A list of the same length as `numen-call-stacks' containing the id of the currently selected frame from each stack.")
-(defvar numen-childproc nil "The process doing evals for Numen, if Emacs created it.")
+(defvar numen-evalproc nil "The process that Numen asks to evaluate expressions.")
 (defvar numen-views nil "Hash table storing view data for the values in `numen-evals'.")
 
 ;;; for secondary Numen buffers
@@ -186,7 +190,7 @@ window to display the buffer when it isn't already showing.")
   (set (make-local-variable 'numen-pre-debugging-state) nil)
   (set (make-local-variable 'numen-search-prefix) nil)
   (set (make-local-variable 'numen-selected-frame-ids) nil)
-  (set (make-local-variable 'numen-childproc) nil)
+  (set (make-local-variable 'numen-evalproc) nil)
   (set (make-local-variable 'numen-preferred-window) (selected-window))
   (set (make-local-variable 'numen-views) (make-hash-table)))
 
@@ -207,15 +211,21 @@ stack frames while debugging.
 
 (add-hook 'numen-minor-mode-hook (lambda nil (if numen-minor-mode (numen-enter-minor-mode) (numen-exit-minor-mode))))
 
-(defun run-numen (&optional compiler lumenp)
+(defun run-numen (&optional hostport compiler lumenp)
   (interactive)
   (let ((invocation-directory default-directory))
     (with-current-buffer (get-buffer-create "*Numen*")
       (add-hook 'kill-buffer-hook 'numen-stop nil t)
       (setq numen-default-repl-buffer (current-buffer))
-      (when numen-childproc
+      (when numen-evalproc
         (numen-stop))
       (numen-enter-mode)
+      (set (make-local-variable 'numen-host) nil)
+      (set (make-local-variable 'numen-port) nil)
+      (when hostport ; tempdg: make sure works with empty prefix arg
+        (dbind (host port) (numen-parse-host-and-port hostport)
+          (setq numen-host (or host numen-default-host)
+                numen-port (or port numen-default-port))))
       (set (make-local-variable 'numen-input-compiler) (or compiler 'identity))
       (set (make-local-variable 'numen-lumen-p) lumenp)
       (numen-insert-prompt)
@@ -233,8 +243,8 @@ stack frames while debugging.
 
 (defun numen-start ()
   (numen-stop)
-  (numen-launch-childproc)
-  (run-hooks 'numen-startup-hook))
+  (cond (numen-host (numen-connect))
+        (t (numen-launch))))
 
 ;;;; process
 
@@ -262,8 +272,8 @@ stack frames while debugging.
            ;; you are a repl buffer
            (current-buffer))
           ((buffer-live-p numen-repl-buffer)
-           ;; you are associated with a repl buffer (you're a
-           ;; connection buffer, script buffer, or inspector buffer)
+           ;; you are associated with a repl buffer (you're a process
+           ;; buffer, a script buffer, or an inspector buffer)
            numen-repl-buffer)
           (t numen-default-repl-buffer))))
 
@@ -284,36 +294,61 @@ stack frames while debugging.
 (defmacro in-debugger-p ()
   '(with-repl-buffer numen-call-stacks))
 
-(defun numen-launch-childproc ()
+(defun numen-launch ()
+  "Launch an eval server as a child process and communicate with
+it using stdin and stdout. Called when `numen-host' is NIL."
   (when numen-lumen-p
     (setenv "LUMEN_HOST" "node --expose_debug_as=v8debug"))
-  (let* ((childproc-buffer (generate-new-buffer " *numen-childproc*"))
-         (proc (let ((process-connection-type nil)) ; use a pipe, not a PTY. see elisp reference.
-                 (if numen-lumen-p
-                     (apply 'start-process "lumen" childproc-buffer "lumen"
-                            (list (concat numen-directory "numen.js") "-e" "(launch 'lumen)"))
-                   (apply 'start-process "node" childproc-buffer "node"
-                          (list "--expose_debug_as=v8debug" "-e"
-                                (format "require('%snumen.js');launch('js')" numen-directory)))))))
-    (set-process-filter proc 'numen-eval-listener)
-    (set-process-sentinel proc 'numen-childproc-sentinel)
-    (set-process-query-on-exit-flag proc nil)
-    (set-process-coding-system proc 'utf-8 'utf-8) ;; tempdg: want for conn too
-    (setq numen-childproc proc)
-    (with-current-buffer childproc-buffer
-      (set (make-local-variable 'numen-buffer-id) (incf numen-counter))
-      (set (make-local-variable 'numen-repl-buffer) (with-repl-buffer (current-buffer))))))
+  (let* ((process-connection-type nil) ; use a pipe, not a PTY. see Emacs documentation
+         (buf (generate-new-buffer " *numen-childproc*")))
+    (numen-init-evalproc
+     (if numen-lumen-p
+         (apply 'start-process "lumen" buf "lumen"
+                (list (concat numen-directory "numen.js") "-e" "(launch 'lumen)"))
+       (apply 'start-process "node" buf "node"
+              (list "--expose_debug_as=v8debug" "-e"
+                    (format "require('%snumen.js');launch('js')" numen-directory)))))
+    ;; tempdg: since start-process is async, put this elsewhere, like for socket
+    (run-hooks 'numen-startup-hook)))
 
-(defun numen-childproc-sentinel (proc message)
+(defun numen-connect ()
+  "Connect to an already-running eval process at `numen-host' via
+`numen-port'. The connection is stored in `numen-socket'."
+  (let* ((ignore (message "Connecting to eval process at %s:%s..." numen-host numen-port))
+         (process-connection-type nil) ; use a pipe, not a PTY. see Emacs documentation
+         (buf (generate-new-buffer " *numen-socket*")))
+    (numen-init-evalproc
+     (open-network-stream "numen-socket" buf numen-host numen-port :nowait t))))
+
+(defun numen-init-evalproc (proc)
+  (set-process-sentinel proc 'numen-evalproc-sentinel)
+  (set-process-filter proc 'numen-evalproc-filter)
+  (set-process-query-on-exit-flag proc nil)
+  (set-process-coding-system proc 'utf-8 'utf-8)
+  (setq numen-evalproc proc)
+  (with-current-buffer buf
+    (set (make-local-variable 'numen-buffer-id) (incf numen-counter))
+    (set (make-local-variable 'numen-repl-buffer) (with-repl-buffer (current-buffer)))))
+
+(defun numen-evalproc-sentinel (proc message)
   (with-repl-buffer
-   (message "Numen child process quit unexpectedly: %s" (numen-strip-newlines message))
-   (numen-stop)
-   (setq mode-name "Numen:disconnected")))
+   (cond ((null numen-host) ;; tempdg: check process-type
+          (message "Numen child process quit unexpectedly: %s" (numen-strip-newlines message))
+          (numen-stop)
+          (setq mode-name "Numen:aborted"))
+         ((string-match "^open" message)
+          (message "Numen is connected.")
+          (run-hooks 'numen-startup-hook))
+         ((string-match "^failed" message)
+          (with-repl-buffer
+           (message "Numen connection failed: %s" (numen-strip-newlines message))
+           (numen-stop)
+           (setq mode-name "Numen:disconnected")))
+         (t (message "Numen socket sentinel: \"%s\"" (numen-strip-newlines message))))))
 
-(defun numen-eval-listener (proc string)
-  "Write some data received from the eval process to the
-connection buffer, then call a handler to read and act on it any
-complete messages."
+(defun numen-evalproc-filter (proc string)
+  "Write a STRING received from the eval process to the eval process
+buffer, then call a handler to read and act on any complete messages."
   (with-current-buffer (process-buffer proc)
     (goto-char (point-max))
     (insert string)
@@ -323,18 +358,18 @@ complete messages."
 
 (defun numen-send-request (req &optional stuff buffer-id)
   (unless buffer-id (setq buffer-id numen-buffer-id))
-  (if (numen-process-running-p numen-childproc)
+  (if (numen-process-running-p numen-evalproc)
       (let ((json (json-encode (append req (list :stuff (append stuff (list :buffer buffer-id)))))))
         (cond ((in-debugger-p) ; debugger calls are synchronous, so don't
                ;; require length encoding
-               (process-send-string numen-childproc json))
+               (process-send-string numen-evalproc json))
               (t (let ((msg (format "%s%s\n" (length json) json))) ; length encoded
-                   (process-send-string numen-childproc msg)))))
-    (numen-output "Not running\n" 'numen-info-face)))
+                   (process-send-string numen-evalproc msg)))))
+    (numen-output "Not connected.\n" 'numen-info-face)))
 
 (defun numen-read-eval-message ()
   "Extract the next complete message, if one exists, from the
-socket buffer. Messages may be either JSON or plain text."
+eval process buffer. Messages may be either JSON or plain text."
   (let ((start (point-min)))
     (goto-char start)
     (cond ((search-forward "\0" nil t) ; JSON messages begin with this guard character
@@ -599,19 +634,19 @@ it appropriately in the Numen buffer."
       (numen-exit-debugger)
       (numen-end-debugging-session))
     (numen-kill-all-secondary-buffers)
-    (numen-kill-childproc)))
+    (numen-kill-evalproc)))
 
 (defun numen-exit-debugger ()
   (with-repl-buffer
    (numen-pop-call-stack)
    (numen-update-mode-line nil)))
 
-(defun numen-kill-childproc ()
-  (when numen-childproc
-    (set-process-sentinel numen-childproc nil)
-    (kill-buffer (process-buffer numen-childproc))
-    (delete-process numen-childproc)
-    (setq numen-childproc nil)))
+(defun numen-kill-evalproc ()
+  (when numen-evalproc
+    (set-process-sentinel numen-evalproc nil)
+    (kill-buffer (process-buffer numen-evalproc))
+    (delete-process numen-evalproc)
+    (setq numen-evalproc nil)))
 
 (defun numen-kill-all-secondary-buffers ()
   "Kill all the Numen secondary buffers (such as inspectors and
@@ -2234,6 +2269,26 @@ Whitespace here is any of: space, tab, emacs newline (line feed, ASCII 10)."
 (defun numen-trailing-spaces (str)
   "Number of spaces at end of STR."
   (- (length str) (or (string-match " +$" str) (length str))))
+
+(defun numen-parse-host-and-port (hostport)
+  "Return a pair (HOST PORT). If HOSTPORT is a string of the form
+\"host:port\", split it into its two pieces; if it is a number or
+a numeric string, take that as the port and NIL as the host; if
+it is a non-numeric string, take that as the host and NIL as the
+port; otherwise NIL for both."
+  (let ((h nil) (p nil))
+    (cond ((stringp hostport)
+           (dbind (&optional x y) (split-string hostport ":" t)
+             (when (equal x "") (setq x nil))
+             (when (equal y "") (setq y nil))
+             (cond (y (setq h x p (string-to-number y)))
+                   ((string-match "^[0-9]+$" (or x ""))
+                    (setq p (string-to-number x)))
+                   (t (setq h x)))))
+          ((numberp hostport)
+           (setq p hostport)))
+    (when hostport
+      (list h p))))
 
 (defun* numen-plist-to-hash (plist &optional (test 'eq))
   (let ((table (make-hash-table :test test)))

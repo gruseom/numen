@@ -1,7 +1,10 @@
 var vm = require('vm');
 var fs = require('fs');
+var net = require('net');
 
 global.D = v8debug.Debug; // the V8 debugger
+var S = null; // server
+var C = null; // client connection
 
 global.require = require;
 global.exports = {};
@@ -228,7 +231,7 @@ function enterDebugger (exec_state, e) {
 
 function waitForDebuggerCommand () {
     var str = "";
-    var fd = process.stdin.fd;
+    var fd = C.in_.fd;
     while (true) {
         str += fs.readSync(fd, 256)[0];
         if (0 === fs.fstatSync(fd).size) {
@@ -625,17 +628,41 @@ function clientSend (res) {
 }
 
 function write (string) {
-    process.stdout.write(string + '\n');
+    if (C) {
+        C.out.write(string + '\n');
+    } else {
+        log(string);
+    }
 }
 
 function log (string) {
     console.log(string);
 }
 
-launch = function (lang) {
+function listen (in_, out, port) {
+    if (!C) {
+        var buffer = { 'str' : '' };
+        in_.on('data', function (data) { readAndRespond(buffer, data); });
+        in_.on('end', function () { log('goodbye'); C = null; });
+        C = { 'in_' : in_, 'out' : out };
+        if (port) {
+            log("connected on port " + port);
+            out.write('Ready on port ' + port + '.\n');
+        }
+    } else {
+        out.end('Another client has the REPL.\n');
+    }
+}
+
+launch = function (lang, port) {
     runningLumen = ((lang || "").toLowerCase() == "lumen");
-    var buffer = { 'str' : '' };
-    process.stdin.on('data', function (data) { readAndRespond(buffer, data); });
     process.on('uncaughtException', sendException);
-    process.stdin.resume();
+    if (!port) {
+        listen(process.stdin, process.stdout);
+    } else if (!S) {
+        S = net.createServer(function (c) { listen(c, c, port); });
+        S.listen(port, function () {
+            log('Numen is listening on port ' + port);
+        });
+    }
 }
