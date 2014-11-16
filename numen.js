@@ -628,9 +628,9 @@ function write (string) {
 }
 
 launch = function (lang) {
-  runningInLumen = (lang == "lumen");
-  var buffer = { 'str' : '' };
-  process.stdin.on('data', function (data) { readAndRespond(buffer, data); });
-  process.on('uncaughtException', sendException);
-  process.stdin.resume();
+    runningInLumen = (lang == "lumen");
+    var buffer = { 'str' : '' };
+    process.stdin.on('data', function (data) { readAndRespond(buffer, data); });
+    process.on('uncaughtException', sendException);
+    process.stdin.resume();
 }
