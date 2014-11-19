@@ -821,11 +821,11 @@ such buffers whose REPL buffer no longer exists."
         do (return bp)))
 
 (defun numen-sort-breakpoints (breakpoints)
-  (flet ((pred (a b) (let ((ascript (numen-pretty-script-name (hget a :script)))
-                           (bscript (numen-pretty-script-name (hget b :script))))
-                       (cond ((string< ascript bscript) t)
-                             ((string< bscript ascript) nil)
-                             (t (< (hget a :line) (hget b :line)))))))
+  (cl-flet ((pred (a b) (let ((ascript (numen-pretty-script-name (hget a :script)))
+                              (bscript (numen-pretty-script-name (hget b :script))))
+                          (cond ((string< ascript bscript) t)
+                                ((string< bscript ascript) nil)
+                                (t (< (hget a :line) (hget b :line)))))))
     (sort breakpoints 'pred)))
 
 (defun numen-toggle-break-on-exception ()
@@ -1340,8 +1340,8 @@ individually by calling `numen-draft-value'."
                        (numen-maybe-ellipsis val view dlen truelen)))))))
 
 (defun numen--throw-if-too-big (dr acc max)
-  (flet ((add% (len) (when (> (incf (car acc) len) max)
-                       (throw 'too-big t))))
+  (cl-flet ((add% (len) (when (> (incf (car acc) len) max)
+                          (throw 'too-big t))))
     (add% (length (pget dr :delim1)))
     (add% (length (pget dr :delim2)))
     (when (pget dr :ellipsis)
@@ -1425,8 +1425,8 @@ hidden, return this value for the nearest ancestor instead."
 
 (defun numen-scope-pos (scope prop)
   (wlet (view (numen-view (id scope)))
-    (flet ((pos% (sc) (wlet (vkey (hget (numen-find-val sc) :vkey))
-                        (pget (gethash vkey (pget view :extents)) prop))))
+    (cl-flet ((pos% (sc) (wlet (vkey (hget (numen-find-val sc) :vkey))
+                           (pget (gethash vkey (pget view :extents)) prop))))
       (loop while scope for pos = (pos% scope) until pos do (setq scope (cdr scope))
             finally (return (+ pos (numen-value-start (id scope))))))))
 
@@ -2050,9 +2050,9 @@ nil, return the vkey for element N of `numen-evals'."
 
 (defun numen-set-view-state-to-breadcrumb (view crumb)
   (lexical-let ((changed-p nil))
-    (flet ((set% (prop) (unless (equal (pget crumb prop) (pget view prop))
-                          (pset view prop (pget crumb prop))
-                          (setq changed-p t))))
+    (cl-flet ((set% (prop) (unless (equal (pget crumb prop) (pget view prop))
+                             (pset view prop (pget crumb prop))
+                             (setq changed-p t))))
       (set% :restriction)
       (set% :hiding)
       (set% :up-to))
