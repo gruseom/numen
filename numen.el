@@ -152,7 +152,7 @@ window to display the buffer when it isn't already showing.")
 ;;; for repl buffer
 (defvar numen-call-stacks nil "List of call stacks representing possibly nested debugger breaks.")
 (defvar numen-evals nil "Hash table of up to `numen-max-stored-eval-results' evaluation results, keyed by ID received from server.")
-(defvar numen-input-compiler-function nil)
+(defvar numen-input-compiler nil "A function through which Numen passes source code for evaluation, sending what it returns to the eval process.")
 (defvar numen-input-ring nil)
 (defvar numen-input-ring-index nil)
 (defvar numen-lumen-p nil "When true, Numen sends code to a Lumen process; when false, to a Node.js process.")
@@ -207,19 +207,16 @@ stack frames while debugging.
 
 (add-hook 'numen-minor-mode-hook (lambda nil (if numen-minor-mode (numen-enter-minor-mode) (numen-exit-minor-mode))))
 
-(defun run-numen (&optional compiler-function lumenp)
+(defun run-numen (&optional compiler lumenp)
   (interactive)
-  (unless compiler-function
-    (setq compiler-function 'identity))
   (let ((invocation-directory default-directory))
     (with-current-buffer (get-buffer-create "*Numen*")
       (add-hook 'kill-buffer-hook 'numen-stop nil t)
       (setq numen-default-repl-buffer (current-buffer))
       (when numen-childproc
-        (message "Restarting Numen...")
         (numen-stop))
       (numen-enter-mode)
-      (set (make-local-variable 'numen-input-compiler-function) compiler-function)
+      (set (make-local-variable 'numen-input-compiler) (or compiler 'identity))
       (set (make-local-variable 'numen-lumen-p) lumenp)
       (numen-insert-prompt)
       (let ((default-directory invocation-directory))
@@ -1086,7 +1083,7 @@ before evaluating."
     (numen-insert-prompt)
     (numen-scroll-to-bottom)
     (when input
-      (let ((js (funcall numen-input-compiler-function input)))
+      (let ((js (funcall numen-input-compiler input)))
         (cond ((and js (> (length js) 0))
                (numen-request-evaluation js (when arg t))
                (numen-add-to-input-ring (numen-trim input))
