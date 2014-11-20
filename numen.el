@@ -310,13 +310,6 @@ stack frames while debugging.
    (numen-stop)
    (setq mode-name "Numen:disconnected")))
 
-(defun numen-kill-childproc ()
-  (when numen-childproc
-    (set-process-sentinel numen-childproc nil)
-    (kill-buffer (process-buffer numen-childproc))
-    (delete-process numen-childproc)
-    (setq numen-childproc nil)))
-
 (defun numen-eval-listener (proc string)
   "Write some data received from the eval process to the
 connection buffer, then call a handler to read and act on it any
@@ -612,6 +605,13 @@ it appropriately in the Numen buffer."
   (with-repl-buffer
    (numen-pop-call-stack)
    (numen-update-mode-line nil)))
+
+(defun numen-kill-childproc ()
+  (when numen-childproc
+    (set-process-sentinel numen-childproc nil)
+    (kill-buffer (process-buffer numen-childproc))
+    (delete-process numen-childproc)
+    (setq numen-childproc nil)))
 
 (defun numen-kill-all-secondary-buffers ()
   "Kill all the Numen secondary buffers (such as inspectors and
