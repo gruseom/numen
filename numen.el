@@ -304,10 +304,10 @@ it using stdin and stdout. Called when `numen-host' is NIL."
     (numen-init-evalproc
      (if numen-lumen-p
          (apply 'start-process "lumen" buf "lumen"
-                (list (concat numen-directory "numen.js") "-e" "(launch 'lumen)"))
+                (list (concat numen-directory "numen.js") "-e" "(launchNumen 'lumen)"))
        (apply 'start-process "node" buf "node"
               (list "--expose_debug_as=v8debug" "-e"
-                    (format "require('%snumen.js');launch('js')" numen-directory)))))
+                    (format "require('%snumen.js');launchNumen('js')" numen-directory)))))
     ;; tempdg: since start-process is async, put this elsewhere, like for socket
     (run-hooks 'numen-startup-hook)))
 
@@ -344,7 +344,7 @@ it using stdin and stdout. Called when `numen-host' is NIL."
            (message "Numen connection failed: %s" (numen-strip-newlines message))
            (numen-stop)
            (setq mode-name "Numen:disconnected")))
-         (t (message "Numen socket sentinel: \"%s\"" (numen-strip-newlines message))))))
+         (t (message "Numen socket: %s" (numen-strip-newlines message))))))
 
 (defun numen-evalproc-filter (proc string)
   "Write a STRING received from the eval process to the eval process

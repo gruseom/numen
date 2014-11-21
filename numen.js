@@ -654,7 +654,7 @@ function listen (in_, out, port) {
     }
 }
 
-launch = function (lang, port) {
+launchNumen = function (lang, port) {
     runningLumen = ((lang || "").toLowerCase() == "lumen");
     process.on('uncaughtException', sendException);
     if (!port) {
