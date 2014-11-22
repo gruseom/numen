@@ -639,15 +639,32 @@ function log (string) {
     console.log(string);
 }
 
+var stdout_write = process.stdout.write;
+
+function copyStdoutTo(c) {
+    process.stdout.write = function() {
+        var args = Array.prototype.slice.call(arguments, 0);
+        stdout_write.apply(process.stdout, args);
+        c.out.write(args[0]);
+    }
+}
+
+function teardown() {
+    C = null;
+    process.stdout.write = stdout_write;
+    log('goodbye');
+}
+
 function listen (in_, out, port) {
     if (!C) {
         var buffer = { 'str' : '' };
         in_.on('data', function (data) { readAndRespond(buffer, data); });
-        in_.on('end', function () { log('goodbye'); C = null; });
         C = { 'in_' : in_, 'out' : out };
         if (port) {
             log("connected on port " + port);
             out.write('Ready on port ' + port + '.\n');
+            in_.on('end', teardown);
+            copyStdoutTo(C);
         }
     } else {
         out.end('Another client has the REPL.\n');
