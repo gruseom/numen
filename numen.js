@@ -650,9 +650,9 @@ function copyStdoutTo(c) {
 }
 
 function teardown() {
-    C = null;
     process.stdout.write = stdout_write;
-    log('goodbye');
+    log('goodbye ' + C.who);
+    C = null;
 }
 
 function listen (in_, out, port) {
@@ -661,7 +661,8 @@ function listen (in_, out, port) {
         in_.on('data', function (data) { readAndRespond(buffer, data); });
         C = { 'in_' : in_, 'out' : out };
         if (port) {
-            log("connected on port " + port);
+            C.who = out.remoteAddress;
+            log('hello ' + C.who);
             out.write('Ready on port ' + port + '.\n');
             in_.on('end', teardown);
             copyStdoutTo(C);
