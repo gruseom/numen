@@ -125,7 +125,16 @@ function source (script) {
 }
 
 function sendException (e) {
-    clientSend({ 'evaluation' : clientValue(e) });
+    var sent = false;
+    try {
+        sent = clientSend({ 'evaluation' : clientValue(e) });
+    } catch (e) {
+        sent = false;
+    }
+
+    if (!sent) {
+        log(errorToNumenTrace(e));
+    }
 }
 
 // breakpoints
@@ -624,14 +633,9 @@ function clientSend (res) {
     var json = JSON.stringify(res);
     // delimit JSON strings and length-encode them so we know exactly
     // what to pass to the JSON reader on the Emacs side
-    write('\0' + json.length + json);
-}
-
-function write (string) {
     if (C) {
-        C.out.write(string + '\n');
-    } else {
-        log(string);
+        C.out.write('\0' + json.length + json + '\n');
+        return true;
     }
 }
 
