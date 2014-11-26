@@ -653,12 +653,6 @@ function copyStdoutTo(c) {
     }
 }
 
-function teardown() {
-    process.stdout.write = stdout_write;
-    log('goodbye ' + C.who);
-    C = null;
-}
-
 function listen (in_, out, port) {
     if (!C) {
         var buffer = { 'str' : '' };
@@ -668,7 +662,11 @@ function listen (in_, out, port) {
             C.who = out.remoteAddress;
             log('hello ' + C.who);
             out.write('Ready on port ' + port + '.\n');
-            in_.on('end', teardown);
+            in_.on('end', function () {
+                process.stdout.write = stdout_write;
+                log('goodbye ' + C.who);
+                C = null;
+            });
             copyStdoutTo(C);
         }
     } else {

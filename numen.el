@@ -120,7 +120,7 @@ dropped from the string. Does nothing if TABLE is nil."
   (define-key map (kbd "C-c M-o") 'numen-clear-repl-buffer)
   (define-key map (kbd "C-c C-n") 'numen-goto-next-prompt)
   (define-key map (kbd "C-c C-p") 'numen-goto-previous-prompt)
-  (define-key map (kbd "C-c C-c") (lambda () (interactive) (numen-start)))
+  (define-key map (kbd "C-c C-c") 'numen-restart)
   (define-key map (kbd "C-c C-x") 'numen-exit)
   map)
 
@@ -136,14 +136,13 @@ dropped from the string. Does nothing if TABLE is nil."
 (defvar numen-print-wrap 80 "Maximum number of characters a printed object may require before being broken into multiple lines in the REPL.")
 (defvar numen-default-port 7777 "The port that Numen will use to connect to the eval server if the user doesn't specify one.")
 
-(defvar numen-repl-hook nil
+(defvar numen-repl-message-hook nil
   "List of functions of one argument MSG that the Numen client
 calls with any message from the eval process that it doesn't
 recognize. The first one to return non-nil is considered to have
 handled the message.")
 
-(defvar numen-startup-hook nil
-  "Hook that gets called after connecting to the eval process.")
+(defvar numen-startup-hook nil "Hook to call after connecting to the eval process.")
 
 ;;; for all buffers
 (defvar numen-buffer-id nil "Unique ID assigned to each Numen buffer so that eval process messages can be sent to the right place.")
@@ -153,6 +152,7 @@ window to display the buffer when it isn't already showing.")
 
 ;;; for repl buffer
 (defvar numen-call-stacks nil "List of call stacks representing possibly nested debugger breaks.")
+(defvar numen-evalproc nil "The process that Numen asks to evaluate expressions.")
 (defvar numen-evals nil "Hash table of up to `numen-max-stored-eval-results' evaluation results, keyed by ID received from server.")
 (defvar numen-host nil "The server the eval process is running on. NIL when Numen creates the eval process.")
 (defvar numen-input-compiler nil "A function through which Numen passes source code for evaluation, sending what it returns to the eval process.")
@@ -165,7 +165,6 @@ window to display the buffer when it isn't already showing.")
 (defvar numen-pre-debugging-state nil "Stuff we want to restore when exiting the debugger, like the prior window configuration.")
 (defvar numen-search-prefix nil)
 (defvar numen-selected-frame-ids nil "A list of the same length as `numen-call-stacks' containing the id of the currently selected frame from each stack.")
-(defvar numen-evalproc nil "The process that Numen asks to evaluate expressions.")
 (defvar numen-views nil "Hash table storing view data for the values in `numen-evals'.")
 
 ;;; for secondary Numen buffers
@@ -182,6 +181,7 @@ window to display the buffer when it isn't already showing.")
 \\{numen-mode-map}"
   (set (make-local-variable 'numen-buffer-id) (incf numen-counter))
   (set (make-local-variable 'numen-call-stacks) nil)
+  (set (make-local-variable 'numen-evalproc) nil)
   (set (make-local-variable 'numen-evals) (make-hash-table))
   (set (make-local-variable 'numen-input-ring) (make-ring numen-input-ring-size))
   (set (make-local-variable 'numen-input-ring-index) -1)
@@ -190,7 +190,6 @@ window to display the buffer when it isn't already showing.")
   (set (make-local-variable 'numen-pre-debugging-state) nil)
   (set (make-local-variable 'numen-search-prefix) nil)
   (set (make-local-variable 'numen-selected-frame-ids) nil)
-  (set (make-local-variable 'numen-evalproc) nil)
   (set (make-local-variable 'numen-preferred-window) (selected-window))
   (set (make-local-variable 'numen-views) (make-hash-table)))
 
@@ -242,9 +241,13 @@ stack frames while debugging.
       (setq numen-input-ring ring))))
 
 (defun numen-start ()
-  (numen-stop)
   (cond (numen-host (numen-connect))
         (t (numen-launch))))
+
+(defun numen-restart ()
+  (interactive)
+  (numen-stop)
+  (numen-start))
 
 ;;;; process
 
@@ -332,18 +335,18 @@ it using stdin and stdout. Called when `numen-host' is NIL."
 
 (defun numen-evalproc-sentinel (proc message)
   (with-repl-buffer
-   (cond ((null numen-host) ;; tempdg: check process-type
+   (cond ((null numen-host)
           (message "Numen child process quit unexpectedly: %s" (numen-strip-newlines message))
           (numen-stop)
           (setq mode-name "Numen:aborted"))
          ((string-match "^open" message)
           (message "Numen is connected.")
           (run-hooks 'numen-startup-hook))
-         ((string-match "^failed" message)
+         ((or (string-match "^failed" message)
+              (string-match "connection broken" message))
           (with-repl-buffer
-           (message "Numen connection failed: %s" (numen-strip-newlines message))
            (numen-stop)
-           (setq mode-name "Numen:disconnected")))
+           (setq mode-name "Numen:aborted")))
          (t (message "Numen socket: %s" (numen-strip-newlines message))))))
 
 (defun numen-evalproc-filter (proc string)
@@ -472,7 +475,7 @@ eval process buffer. Messages may be either JSON or plain text."
              ((hget msg :in-place) (numen-handle-in-place-output it (hget msg :preserve-p)))
              ((hget msg :emacs-eval) (numen-handle-emacs-eval-request it (hget msg :callback-id)))
              ((hget msg :status-message) (message it))
-             (t (unless (loop for handler in numen-repl-hook do
+             (t (unless (loop for handler in numen-repl-message-hook do
                               (when (funcall handler msg) (return t)))
                   (let ((str (format "Unrecognized repl message: %s\n" (json-encode msg))))
                     (numen-output str 'numen-error-face))))))))
@@ -628,7 +631,7 @@ it appropriately in the Numen buffer."
          (set-window-configuration config)))
      (setq numen-pre-debugging-state nil))))
 
-(defun numen-stop () ; should be idempotent so `numen-start' can call it
+(defun numen-stop ()
   (let ((inhibit-read-only t))
     (when (in-debugger-p)
       (numen-exit-debugger)
@@ -2210,8 +2213,7 @@ NUMEN-PREFERRED-WINDOW, set it to the new window."
 
 (defun numen-process-running-p (process)
   (when (processp process)
-    (let ((status (process-status process)))
-      (or (eq 'run status) (eq 'open status)))))
+    (member (process-status process) '(run open))))
 
 (defun numen-pad-to-width (strs)
   (let ((width (loop for str in strs maximize (length str))))
