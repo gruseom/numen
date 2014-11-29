@@ -680,9 +680,20 @@ launchNumen = function (lang, port) {
     if (!port) {
         listen(process.stdin, process.stdout);
     } else if (!S) {
+        var pidfile = "/tmp/numenpid" + port;
+        process.on('exit', function () {
+            log('exit');
+            try { fs.unlinkSync(pidfile); }
+            catch (e) {}
+        });
+        process.on('SIGTERM', function () {
+            log('sigterm');
+            process.exit();
+        });
         S = net.createServer(function (c) { listen(c, c, port); });
         S.listen(port, function () {
-            log('Numen is listening on port ' + port);
+            fs.writeFileSync(pidfile, process.pid);
+            log('Numen ' + process.pid + ' is listening on port ' + port);
         });
     }
 }
