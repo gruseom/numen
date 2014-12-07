@@ -132,7 +132,13 @@ function sendException (e) {
         sent = false;
     }
 
-    if (!sent) {
+    if (sent) {
+        if (e.stack) {
+            numenLogFile(e.stack);
+        } else {
+            numenLogFile((e.name || "Error") + ": " + e.message);
+        }
+    } else {
         log(errorToNumenTrace(e));
     }
 }
@@ -639,19 +645,39 @@ function clientSend (res) {
     }
 }
 
-function log (string) {
-    console.log(string);
+global.numenLogPrefix = null;
+global.numenLogClientMessages = false;
+
+function log (str) {
+    console.log(str);
 }
+
+numenLogFile = function (str) {
+    if (numenLogPrefix) {
+        if (str[str.length - 1] !== '\n') {
+            str += '\n';
+        }
+        if (str[0] !== '\0' || numenLogClientMessages) {
+            fs.appendFileSync(numenLogPrefix + today(), timestamp() + ' ' + str);
+        }
+    }
+}
+
+function timestamp () { return (new Date()).toISOString(); }
+function today () { return timestamp().split('T')[0]; }
 
 var stdout_write = process.stdout.write;
 
-function copyStdoutTo(c) {
-    process.stdout.write = function() {
-        var args = Array.prototype.slice.call(arguments, 0);
-        stdout_write.apply(process.stdout, args);
-        c.out.write(args[0]);
+function ourStdout () {
+    var args = Array.prototype.slice.call(arguments, 0);
+    stdout_write.apply(process.stdout, args);
+    if (C && C.remote) {
+        C.out.write(args[0]);
     }
+    numenLogFile(args[0]);
 }
+
+process.stdout.write = ourStdout;
 
 function listen (in_, out, port) {
     if (!C) {
@@ -659,15 +685,13 @@ function listen (in_, out, port) {
         in_.on('data', function (data) { readAndRespond(buffer, data); });
         C = { 'in_' : in_, 'out' : out };
         if (port) {
-            C.who = out.remoteAddress;
-            log('hello ' + C.who);
+            C.remote = out.remoteAddress;
+            log('hello ' + C.remote);
             out.write('Ready on port ' + port + '.\n');
             in_.on('end', function () {
-                process.stdout.write = stdout_write;
-                log('goodbye ' + C.who);
+                log('goodbye ' + C.remote);
                 C = null;
             });
-            copyStdoutTo(C);
         }
     } else {
         out.end('Another client has the REPL.\n');
