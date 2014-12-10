@@ -115,7 +115,11 @@ global.numenLoad = function (script, breakpoints, asName) { // numen-load
         breakOnLoad = function () { ensureBreakpointsOn(breakpoints); }
         D.breakExecution();
     }
-    vm.runInThisContext(code, asName || script);
+    try {
+        vm.runInThisContext(code, asName || script);
+    } catch (e) {
+        sendException(e);
+    }
     return script;
 }
 
@@ -125,21 +129,13 @@ function source (script) {
 }
 
 function sendException (e) {
-    var sent = false;
     try {
-        sent = clientSend({ 'evaluation' : clientValue(e) });
-    } catch (e) {
-        sent = false;
-    }
-
-    if (sent) {
-        if (e.stack) {
-            numenLogFile(e.stack);
-        } else {
-            numenLogFile((e.name || "Error") + ": " + e.message);
-        }
-    } else {
-        log(errorToNumenTrace(e));
+        clientSend({ 'evaluation' : clientValue(e) });
+        numenLogFile(errorToString(e));
+    } catch (e2) {
+        log(errorToString(e));
+        log("While trying to send that error, another error occurred:");
+        log(errorToString(e2));
     }
 }
 
@@ -507,6 +503,10 @@ function v8StackTraceAsNumenArray (stack) {
     }
 }
 
+function errorToString (e) {
+    return e.stack || ((e.name || "Error") + ": " + e.message);
+}
+
 function errorToNumenTrace (e) {
     if (e.stack) {
         return v8StackTraceAsNumenArray(e.stack);
@@ -645,26 +645,20 @@ function clientSend (res) {
     }
 }
 
+function ensureEnd (str, c) {
+    if (str[str.length - 1] !== c) {
+        return str + c;
+    }
+    return str;
+}
+
 global.numenLogPrefix = null;
 global.numenLogClientMessages = false;
 
 function log (str) {
+    // writes to intercepted stdout so can send to client and/or log file
     console.log(str);
 }
-
-numenLogFile = function (str) {
-    if (numenLogPrefix) {
-        if (str[str.length - 1] !== '\n') {
-            str += '\n';
-        }
-        if (str[0] !== '\0' || numenLogClientMessages) {
-            fs.appendFileSync(numenLogPrefix + today(), timestamp() + ' ' + str);
-        }
-    }
-}
-
-function timestamp () { return (new Date()).toISOString(); }
-function today () { return timestamp().split('T')[0]; }
 
 var stdout_write = process.stdout.write;
 
@@ -679,18 +673,31 @@ function ourStdout () {
 
 process.stdout.write = ourStdout;
 
+numenLogFile = function (str) {
+    if (numenLogPrefix) {
+        str = ensureEnd(str, '\n');
+        if (str[0] !== '\0' || numenLogClientMessages) {
+            fs.appendFileSync(numenLogPrefix + today(), timestamp() + ' ' + str);
+        }
+    }
+}
+
+function timestamp () { return (new Date()).toISOString(); }
+function today () { return timestamp().split('T')[0]; }
+
 function listen (in_, out, port) {
     if (!C) {
         var buffer = { 'str' : '' };
         in_.on('data', function (data) { readAndRespond(buffer, data); });
         C = { 'in_' : in_, 'out' : out };
         if (port) {
-            C.remote = out.remoteAddress;
-            log('hello ' + C.remote);
+            var addr = out.remoteAddress;
+            C.remote = addr;
+            log('hello ' + addr);
             out.write('Ready on port ' + port + '.\n');
             in_.on('end', function () {
-                log('goodbye ' + C.remote);
                 C = null;
+                log('goodbye ' + addr);
             });
         }
     } else {
@@ -698,8 +705,11 @@ function listen (in_, out, port) {
     }
 }
 
-launchNumen = function (lang, port) {
+launchNumen = function (lang, port, logpath) {
     runningLumen = ((lang || "").toLowerCase() == "lumen");
+    if (logpath) {
+        numenLogPrefix = ensureEnd(logpath, '/') + "numen-";
+    }
     process.on('uncaughtException', sendException);
     if (!port) {
         listen(process.stdin, process.stdout);
