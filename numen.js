@@ -705,7 +705,7 @@ function listen (in_, out, port) {
     }
 }
 
-launchNumen = function (lang, port, logpath) {
+launchNumen = function (lang, port, logpath, loadpath) {
     runningLumen = ((lang || "").toLowerCase() == "lumen");
     if (logpath) {
         numenLogPrefix = ensureEnd(logpath, '/') + "numen-";
@@ -728,6 +728,10 @@ launchNumen = function (lang, port, logpath) {
         S.listen(port, function () {
             fs.writeFileSync(pidfile, process.pid);
             log('Numen ' + process.pid + ' is listening on port ' + port);
+            if (loadpath) {
+                log('loading ' + loadpath + '...');
+                numenLoad(loadpath);
+            }
         });
     }
 }
