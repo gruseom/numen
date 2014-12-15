@@ -109,7 +109,7 @@ function fillNeeds (id, needs) {
     return needs;
 }
 
-global.numenLoad = function (script, breakpoints, asName) { // numen-load
+global.numenLoad = function (script, breakpoints, asName, exitCodeIfFail) { // numen-load
     var code = fs.readFileSync(script).toString();
     if (breakpoints) {
         breakOnLoad = function () { ensureBreakpointsOn(breakpoints); }
@@ -119,6 +119,9 @@ global.numenLoad = function (script, breakpoints, asName) { // numen-load
         vm.runInThisContext(code, asName || script);
     } catch (e) {
         sendException(e);
+        if (exitCodeIfFail) {
+            process.exit(exitCodeIfFail);
+        }
     }
     return script;
 }
@@ -730,7 +733,7 @@ launchNumen = function (lang, port, logpath, loadpath) {
             log('Numen ' + process.pid + ' is listening on port ' + port);
             if (loadpath) {
                 log('loading ' + loadpath + '...');
-                numenLoad(loadpath);
+                numenLoad(loadpath, null, null, 88); // arbitrary exit code for load failure
             }
         });
     }
