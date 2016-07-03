@@ -193,7 +193,7 @@ function findBreakpoint (scriptObj, line) {
 global.allBreakpoints = function () {
     var bps = [];
     var v8bps = v8debug.script_break_points;
-    for (var i=0; i<v8bps.length; i++) {
+    for (var i=0; i < v8bps.length; i++) {
         var scriptObj = findScriptByID(v8bps[i].script_id());
         if (scriptObj != null) {
             bps.push({ 'script' : scriptObj.name, 'line' : v8bps[i].line(),
