@@ -2310,4 +2310,5 @@ simply return STR."
     (add-text-properties 0 (length str) props str))
   str)
 
+(add-hook 'javascript-mode-hook 'numen-minor-mode)
 (provide 'numen)
