@@ -94,7 +94,7 @@ function evaluateAtTopLevel (code, breakAtStart) {
         D.breakExecution();
     }
     if (runningLumen) {
-        return clientValue(eval(read_from_string(code)));
+        return clientValue(eval(read_string(code)));
     } else {
         return clientValue(vm.runInThisContext(code, uniqueEvalScriptName()));
     }
@@ -395,11 +395,11 @@ function represent (value, from, depth, batch) {
 
     // too deep? give them stubs
     if (depth <= 0 && !trivial(value)) {
-        return Array.isArray(value) ? { 'vals' : [], 'truelen' : value.length }
+        return treatAsArray(value) ? { 'vals' : [], 'truelen' : value.length }
         : { 'keys' : [], 'vals' : [], 'truelen' : Object.getOwnPropertyNames(value).length };
     }
 
-    if (Array.isArray(value)) {
+    if (treatAsArray(value)) {
         var to = Math.min(value.length, from + (batch || numenDefaultLength));
         var vals = new Array(to - from);
         for (var i = from; i < to; i++) {
@@ -583,7 +583,7 @@ function keyOrder (a, b) {
 }
 
 function trivial (val) {
-    if (Array.isArray(val)) {
+    if (treatAsArray(val)) {
         if (val.length > 2) { return false; }
         for (var i=0; i<val.length; i++) {
             if (val[i] && typeof val[i] === 'object') { return false; }
@@ -596,6 +596,24 @@ function trivial (val) {
         }
     }
     return true;
+}
+
+function treatAsArray (obj) {
+  if (!Array.isArray(obj)) {
+    return false;
+  }
+  if (runningLumen) {
+    for (k in obj) {
+      if (!digits(k)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function digits (str) {
+  return str.match(/^[0-9]+$/) !== null;
 }
 
 function trim (str) {
