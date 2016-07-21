@@ -21,6 +21,8 @@ function response (req) {
         res = { 'id' : req.id, 'supplement' : fillNeeds(req.id, req.needs) }
     } else if (req.load) {
         res = { 'loaded' : numenLoad(req.load, req.breakpoints) };
+    } else if (req.compile) {
+        res = { 'compiled' : compile(expand(read_string(req.compile))) };
     } else if (req.source) {
         res = { 'script' : req.source, 'source' : source(req.source) };
     } else if (req.breakpoint) {
