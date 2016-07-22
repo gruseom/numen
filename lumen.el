@@ -28,7 +28,14 @@ All commands in `lisp-mode-shared-map' are inherited by this map.")
 (defun lumen-handle-repl-message (msg)
   "Intercept messages sent from the Numen JavaScript server to
 Emacs and handle the ones that are intended for Lumen."
-  (acond ((hget msg :compiled)
+  (acond ((hget msg :evaluation)
+          (wlet (stuff (hget msg :stuff))
+            (wlet (src (hget stuff :evaldefun))
+              (let ((s (lumen--substring (numen-strip-newlines src) 0 50)))
+                (numen-output s 'numen-console-face))
+              (numen-fresh-line)
+              t)))
+         ((hget msg :compiled)
           (lumen-display-compiled-code it)
           t)))
 
@@ -42,15 +49,20 @@ Emacs and handle the ones that are intended for Lumen."
 (defun lumen-eval-defun (&optional arg)
   (interactive)
   (let ((src (lumen--top-sexp)))
-    (save-window-excursion
-      (numen-switch-to-repl)
-      (numen-request-evaluation src arg))))
+    (with-repl-buffer
+     (numen-send-request (list :evaluate src) (list :evaldefun src)))))
 
 (defun lumen--top-sexp ()
   "Return a string containing the topmost sexp at point."
   (save-excursion
     (mark-defun)
-    (buffer-substring-no-properties (point) (mark))))
+    (numen-trim (buffer-substring-no-properties (point) (mark)))))
+
+(defun lumen--substring (string from &optional to)
+  "Like `substring' but doesn't raise an error if FROM or TO
+  exceed the length of STRING."
+  (substring string (min from (length string))
+             (when to (min to (length string)))))
 
 (add-hook 'lumen-mode-hook
           (lambda ()

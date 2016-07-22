@@ -459,6 +459,9 @@ eval process buffer. Messages may be either JSON or plain text."
   (let ((msg nil))
     (while (setq msg (numen-read-eval-message))
       (acond ((stringp msg) (numen-output msg 'numen-console-face))
+             ((loop for handler in numen-repl-message-hook do
+                    (when (funcall handler msg) (return t)))
+              nil)
              ((hget msg :evaluation) (numen-report-evaluation it))
              ((hget msg :supplement)
               (hbind (spot buffer) (hget msg :stuff)
@@ -475,10 +478,8 @@ eval process buffer. Messages may be either JSON or plain text."
              ((hget msg :in-place) (numen-handle-in-place-output it (hget msg :preserve-p)))
              ((hget msg :emacs-eval) (numen-handle-emacs-eval-request it (hget msg :callback-id)))
              ((hget msg :status-message) (message it))
-             (t (unless (loop for handler in numen-repl-message-hook do
-                              (when (funcall handler msg) (return t)))
-                  (let ((str (format "Unrecognized repl message: %s\n" (json-encode msg))))
-                    (numen-output str 'numen-error-face))))))))
+             (t (let ((str (format "Unrecognized repl message: %s\n" (json-encode msg))))
+                  (numen-output str 'numen-error-face)))))))
 
 (defmacro vkey (val) "Printed key representing the path to VAL." `(gethash "vkey" ,val))
 (defmacro id (scope) "ID number of the evaluation that SCOPE is part of." `(car (last ,scope)))
