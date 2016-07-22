@@ -402,9 +402,9 @@ eval process buffer. Messages may be either JSON or plain text."
 
 ;;;; requests
 
-(defun numen-request-evaluation (js break-p)
+(defun numen-request-evaluation (src break-p)
   (with-repl-buffer
-   (numen-send-request (append (list :evaluate js)
+   (numen-send-request (append (list :evaluate src)
                                (acond ((numen-selected-frame-index) (list :frame_index it))
                                       (break-p (list :break_ t)))))))
 
@@ -946,12 +946,12 @@ location that could be jumped to."
     (set (make-local-variable 'numen-secondary-p) t)
     (current-buffer)))
 
-(defun numen-update-secondary-source-buffer (script js)
+(defun numen-update-secondary-source-buffer (script src)
   (with-current-buffer (or (numen-find-secondary-source-buffer script)
                            (numen-make-secondary-source-buffer script))
     (let ((inhibit-read-only t))
       (erase-buffer)
-      (insert js)
+      (insert src)
       (numen-fresh-line)
       (numen-update-fringe-overlays)
       (current-buffer))))
@@ -1121,9 +1121,9 @@ before evaluating."
     (numen-insert-prompt)
     (numen-scroll-to-bottom)
     (when input
-      (let ((js (funcall numen-input-compiler input)))
-        (cond ((and js (> (length js) 0))
-               (numen-request-evaluation js (when arg t))
+      (let ((src (funcall numen-input-compiler input)))
+        (cond ((and src (> (length src) 0))
+               (numen-request-evaluation src (when arg t))
                (numen-add-to-input-ring (numen-trim input))
                (setq numen-input-ring-index -1))
               (t (numen-output "Nothing to evaluate\n" 'numen-info-face)))))))
