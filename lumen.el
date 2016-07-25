@@ -7,6 +7,7 @@
 (defvar lumen-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map lisp-mode-shared-map)
+    (define-key map (kbd "RET") 'paredit-newline)
     (define-key map (kbd "C-c j") 'lumen-code-expand)
     (define-key map (kbd "C-c C-c") 'lumen-eval-defun)
     map)
