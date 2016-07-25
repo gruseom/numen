@@ -77,12 +77,12 @@ Emacs and handle the ones that are intended for Lumen."
 
 (defun start-lumen-repl ()
   (interactive)
-  (define-key numen-mode-map (kbd "RET") 'lumen-newline-and-indent)
+  (define-key numen-mode-map (kbd "RET") 'lumen--repl-newline)
   (define-key numen-mode-map (kbd "M-RET") 'numen-return)
   (define-key numen-mode-map (kbd "C-c j") 'lumen-code-expand)
   (run-numen nil nil t))
 
-(defun lumen-newline-and-indent ()
+(defun lumen--repl-newline ()
   (interactive)
   (save-restriction
     (let ((inhibit-read-only t))
