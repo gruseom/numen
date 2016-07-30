@@ -609,11 +609,9 @@ function treatAsArray (obj) {
   if (!Array.isArray(obj)) {
     return false;
   }
-  if (runningLumen) {
-    for (k in obj) {
-      if (!digits(k)) {
-        return false;
-      }
+  for (k in obj) {
+    if (!digits(k)) {
+      return false;
     }
   }
   return true;
