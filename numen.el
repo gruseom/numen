@@ -862,7 +862,7 @@ such buffers whose REPL buffer no longer exists."
                           (cond ((string< ascript bscript) t)
                                 ((string< bscript ascript) nil)
                                 (t (< (hget a :line) (hget b :line)))))))
-    (sort breakpoints 'pred)))
+    (sort breakpoints (lambda (a b) (pred a b)))))
 
 (defun numen-toggle-break-on-exception ()
   (interactive)
