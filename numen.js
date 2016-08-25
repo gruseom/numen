@@ -1,6 +1,7 @@
 var vm = require('vm');
 var fs = require('fs');
 var net = require('net');
+var child_process = require('child_process');
 
 var reader = require('reader');
 var compiler = require('compiler');
@@ -300,7 +301,11 @@ function runDebuggerLoop (exec_state) {
             }
         }
         catch (e) {
-            sendException(e);
+            if (e.code === 'EAGAIN') {
+                child_process.execSync("sleep 0.05");
+            } else {
+                sendException(e);
+            }
         }
     }
 }
