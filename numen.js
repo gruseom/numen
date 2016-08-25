@@ -1,6 +1,10 @@
 var vm = require('vm');
 var fs = require('fs');
 var net = require('net');
+var child_process = require('child_process');
+
+var reader = require('reader');
+var compiler = require('compiler');
 
 global.D = v8debug.Debug; // the V8 debugger
 var S = null; // server
@@ -22,7 +26,7 @@ function response (req) {
     } else if (req.load) {
         res = { 'loaded' : numenLoad(req.load, req.breakpoints) };
     } else if (req.compile) {
-        res = { 'compiled' : compile(expand(read_string(req.compile))) };
+        res = { 'compiled' : compiler.compile(compiler.expand(reader["read-string"](req.compile))) };
     } else if (req.source) {
         res = { 'script' : req.source, 'source' : source(req.source) };
     } else if (req.breakpoint) {
@@ -96,7 +100,7 @@ function evaluateAtTopLevel (code, breakAtStart) {
         D.breakExecution();
     }
     if (runningLumen) {
-        return clientValue(eval(read_string(code)));
+        return clientValue(compiler.eval(reader["read-string"](code)));
     } else {
         return clientValue(vm.runInThisContext(code, uniqueEvalScriptName()));
     }
@@ -297,7 +301,11 @@ function runDebuggerLoop (exec_state) {
             }
         }
         catch (e) {
-            sendException(e);
+            if (e.code === 'EAGAIN') {
+                child_process.execSync("sleep 0.05");
+            } else {
+                sendException(e);
+            }
         }
     }
 }
