@@ -69,7 +69,8 @@ Emacs and handle the ones that are intended for Lumen."
             ;; Slime messes with the keyboard shortcuts defined above
             ;; and shouldn't be necessary for editing Lumen files.
             (slime-mode -1)
-            (slime-autodoc-mode -1)))
+            (when (fboundp 'slime-autodoc-mode)
+              (slime-autodoc-mode -1))))
 
 ;;; Extend the Numen REPL for Lumen
 
