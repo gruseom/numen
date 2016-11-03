@@ -1,6 +1,7 @@
 var vm = require('vm');
 var fs = require('fs');
 var net = require('net');
+var child_process = require('child_process');
 
 global.D = v8debug.Debug; // the V8 debugger
 var S = null; // server
@@ -297,7 +298,11 @@ function runDebuggerLoop (exec_state) {
             }
         }
         catch (e) {
-            sendException(e);
+            if (e.code === 'EAGAIN') {
+                child_process.execSync("sleep 0.05");
+            } else {
+                sendException(e);
+            }
         }
     }
 }

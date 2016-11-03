@@ -862,7 +862,7 @@ such buffers whose REPL buffer no longer exists."
                           (cond ((string< ascript bscript) t)
                                 ((string< bscript ascript) nil)
                                 (t (< (hget a :line) (hget b :line)))))))
-    (sort breakpoints 'pred)))
+    (sort breakpoints (lambda (a b) (pred a b)))))
 
 (defun numen-toggle-break-on-exception ()
   (interactive)
@@ -1534,6 +1534,7 @@ printed value identified by ID."
   (define-key map (kbd "d") 'numen-inspector-down)
   (define-key map (kbd "l") 'numen-inspector-set-display-length)
   (define-key map (kbd "RET") 'numen-inspector-return)
+  (define-key map (kbd "*") 'numen-inspector-distend)
   (define-key map (kbd "x") 'numen-inspector-elide)
   (define-key map (kbd "r") 'numen-inspector-restrict)
   (define-key map (kbd "w") 'numen-inspector-widen)
@@ -1735,6 +1736,19 @@ loaded, fetch some data."
       (numen-request-details (id scope) needs spot)
       t)))
 
+(defun numen-inspector--display (scope val len)
+  (do-leaving-breadcrumbs
+   (let ((spot (numen-spot scope (1- (min len (hget val :truelen)))))
+         (change nil))
+     (when val
+       (cond ((= len 0) (setq change (numen-fold (id scope) val 0)))
+             (t (let ((unhid-p (numen-unfold (id scope) val 0)))
+                  (setq change (or (numen-display-up-to scope val len) unhid-p))))))
+     (cond ((null change) (message "No change"))
+           ((eq change :fetching) (message "Fetching..."))
+           (t (numen-reinsert-value (id scope))
+              (apply #'numen-goto-spot spot))))))
+
 (defun numen-inspector-set-display-length (&optional how-many)
   "If the value at point is an object or array, display it with
 up to HOW-MANY elements. (The default is 10.) If it is a string,
@@ -1748,21 +1762,26 @@ greater than zero, unhide it first."
   (unless how-many (setq how-many 10))
   (wlet (scope (numen-get-scope))
     (wlet (val (numen-find-val-or-report-deletion scope))
-      (do-leaving-breadcrumbs
-       ;; if current scope is an atom, use parent instead.
-       (unless (or (hget val :vals) (hget val :str) (null (cdr scope)))
-         (setq scope (cdr scope))
-         (setq val (numen-find-val scope)))
-       (let ((spot (numen-spot scope (1- (min how-many (hget val :truelen)))))
-             (change nil))
-         (when val
-           (cond ((= how-many 0) (setq change (numen-fold (id scope) val 0)))
-                 (t (let ((unhid-p (numen-unfold (id scope) val 0)))
-                      (setq change (or (numen-display-up-to scope val how-many) unhid-p))))))
-         (cond ((null change) (message "No change"))
-               ((eq change :fetching) (message "Fetching..."))
-               (t (numen-reinsert-value (id scope))
-                  (apply #'numen-goto-spot spot))))))))
+      ;; if current scope is an atom, use parent instead.
+      (unless (or (hget val :vals) (hget val :str) (null (cdr scope)))
+        (setq scope (cdr scope))
+        (setq val (numen-find-val scope)))
+      (numen-inspector--display scope val how-many))))
+
+(defun numen-inspector-distend (&optional how-many)
+  "If the point is within a child scope, set the display length of the
+parent scope to end at this child plus HOW-MANY elements. (The default
+is 20.)"
+  (interactive "P")
+  (unless how-many (setq how-many 20))
+  (wlet (scope (numen-get-scope))
+    (wlet (offset (car scope))
+      (wlet (val (numen-find-val-or-report-deletion scope))
+         ;; if current scope is an atom, use parent instead.
+         (unless (or (hget val :vals) (null (cdr scope)))
+           (setq scope (cdr scope))
+           (setq val (numen-find-val scope)))
+         (numen-inspector--display scope val (+ offset how-many 1))))))
 
 (defun numen-inspector-elide ()
   "If the point is within a child scope, set the display length
