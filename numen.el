@@ -404,11 +404,11 @@ eval process buffer. Messages may be either JSON or plain text."
 
 ;;;; requests
 
-(defun numen-request-evaluation (src break-p)
+(defun numen-request-evaluation (src)
   (with-repl-buffer
    (numen-send-request (append (list :evaluate src)
                                (acond ((numen-selected-frame-index) (list :frame_index it))
-                                      (break-p (list :break_ t)))))))
+                                      (t nil))))))
 
 (defun numen-request-details (id needs spot)
   (let ((buffer-id numen-buffer-id))
@@ -1112,11 +1112,10 @@ When PRESERVE-P is non-nil, do not delete any previous output."
     (when (> (length input) 0)
       input)))
 
-(defun numen-send-input (&optional arg)
+(defun numen-send-input ()
   "Advance the prompt, add the current input to the input ring,
-and evaluate it. With a prefix argument, break into the debugger
-before evaluating."
-  (interactive "P")
+and evaluate it."
+  (interactive)
   (goto-char (point-max))
   (let ((input (numen-current-input)))
     (numen-fresh-line)
@@ -1126,19 +1125,19 @@ before evaluating."
     (when input
       (let ((src (funcall numen-input-compiler input)))
         (cond ((and src (> (length src) 0))
-               (numen-request-evaluation src (when arg t))
+               (numen-request-evaluation src)
                (numen-add-to-input-ring (numen-trim input))
                (setq numen-input-ring-index -1))
               (t (numen-output "Nothing to evaluate\n" 'numen-info-face)))))))
 
-(defun numen-return (&optional arg)
+(defun numen-return ()
   "Call `numen-send-input' to evaluate the current input string,
 unless point is at an old input, in which case call
 `numen-grab-old-input' to insert the old input at the current
 prompt."
-  (interactive "P")
+  (interactive)
   (cond ((get-text-property (point) 'old-input) (numen-grab-old-input))
-        (t (numen-send-input arg))))
+        (t (numen-send-input))))
 
 (defun numen-grab-old-input ()
   "When point is in an old input expression, copy it to the current prompt."

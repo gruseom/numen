@@ -17,11 +17,11 @@ clearAllBreakpoints(); // clear breakpoint that gets set on startup
 function response (req) {
     var res = null;
     if (req.evaluate) {
-        res = { 'evaluation' : evaluateAtTopLevel(req.evaluate, req.break_) }
+        res = { 'evaluation' : evaluateAtTopLevel(req.evaluate) }
     } else if (req.needs) {
         res = { 'id' : req.id, 'supplement' : fillNeeds(req.id, req.needs) }
     } else if (req.load) {
-        res = { 'loaded' : numenLoad(req.load, req.breakpoints) };
+        res = { 'loaded' : numenLoad(req.load) };
     } else if (req.compile) {
         res = { 'compiled' : compile(expand(read_string(req.compile))) };
     } else if (req.source) {
@@ -48,7 +48,6 @@ function response (req) {
     return res;
 }
 
-var breakOnLoad = null;
 var exceptionInProgress = null;
 
 function debugListener (event, exec_state, event_data, data) {
@@ -62,11 +61,6 @@ function debugListener (event, exec_state, event_data, data) {
         }
     } else if (event !== D.DebugEvent.Break) {
         // we're not handling any other kind of event
-    } else if (breakOnLoad) {
-        // we asked for a break event while loading a script in order
-        // to e.g. set some breakpoints. call the callback and leave.
-        breakOnLoad();
-        breakOnLoad = null;
     } else {
         enterDebugger(exec_state);
     }
@@ -92,10 +86,7 @@ function clientValue (val, depth, batch) {
 
 var runningLumen = false;
 
-function evaluateAtTopLevel (code, breakAtStart) {
-    if (breakAtStart) {
-        D.breakExecution();
-    }
+function evaluateAtTopLevel (code) {
     if (runningLumen) {
         return clientValue(eval(read_string(code)));
     } else {
@@ -112,12 +103,8 @@ function fillNeeds (id, needs) {
     return needs;
 }
 
-global.numenLoad = function (script, breakpoints, asName, exitCodeIfFail) { // numen-load
+global.numenLoad = function (script, asName, exitCodeIfFail) { // numen-load
     var code = fs.readFileSync(script).toString();
-    if (breakpoints) {
-        breakOnLoad = function () { ensureBreakpointsOn(breakpoints); }
-        D.breakExecution();
-    }
     try {
         vm.runInThisContext(code, asName || script);
     } catch (e) {
@@ -195,7 +182,7 @@ function findBreakpoint (scriptObj, line) {
 
 global.allBreakpoints = function () {
     var bps = [];
-    var v8bps = v8debug.script_break_points;
+    var v8bps = D.scriptBreakPoints();
     for (var i=0; i < v8bps.length; i++) {
         var scriptObj = findScriptByID(v8bps[i].script_id());
         if (scriptObj != null) {
@@ -208,7 +195,7 @@ global.allBreakpoints = function () {
 
 function clearAllBreakpoints () {
     // curiously, Debug.clearAllBreakPoints doesn't get them all
-    var v8bps = v8debug.script_break_points;
+    var v8bps = D.scriptBreakPoints();
     for (var i=0; i<v8bps.length; i++) {
         D.clearBreakPoint(v8bps[i].number());
     }
