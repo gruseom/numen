@@ -159,6 +159,8 @@ window to display the buffer when it isn't already showing.")
 (defvar numen-input-ring nil)
 (defvar numen-input-ring-index nil)
 (defvar numen-lumen-p nil "When true, Numen sends code to a Lumen process; when false, to a Node.js process.")
+(defvar numen-lumen "lumen" "Program name for invoking Lumen lisp code")
+(defvar numen-node "node" "Program name for invoking Javascript code")
 (defvar numen-markers nil)
 (defvar numen-max-stored-eval-results nil)
 (defvar numen-port nil "Port by which Numen connects to a remote eval process.")
@@ -301,14 +303,14 @@ stack frames while debugging.
   "Launch an eval server as a child process and communicate with
 it using stdin and stdout. Called when `numen-host' is NIL."
   (when numen-lumen-p
-    (setenv "LUMEN_HOST" "node --expose_debug_as=v8debug"))
+    (setenv "LUMEN_HOST" (concat numen-node " --expose_debug_as=v8debug")))
   (let* ((process-connection-type nil) ; use a pipe, not a PTY. see Emacs documentation
          (buf (generate-new-buffer " *numen-childproc*")))
     (numen-init-evalproc
      (if numen-lumen-p
-         (apply 'start-process "lumen" buf "lumen"
+         (apply 'start-process numen-lumen buf numen-lumen
                 (list (concat numen-directory "numen.js") "-e" "(launchNumen 'lumen)"))
-       (apply 'start-process "node" buf "node"
+       (apply 'start-process numen-node buf numen-node
               (list "--expose_debug_as=v8debug" "-e"
                     (format "require('%snumen.js');launchNumen('js')" numen-directory)))))
     ;; tempdg: since start-process is async, put this elsewhere, like for socket
