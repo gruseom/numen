@@ -391,13 +391,13 @@ function represent (value, from, depth, batch) {
         return obj;
     }
 
-    // too deep? give them stubs
+    // too deep? return a stub and let client request more if wanted
     if (depth <= 0 && !trivial(value)) {
-        return treatAsArray(value) ? { 'vals' : [], 'truelen' : value.length }
+        return arrayish(value) ? { 'vals' : [], 'truelen' : value.length }
         : { 'keys' : [], 'vals' : [], 'truelen' : Object.getOwnPropertyNames(value).length };
     }
 
-    if (treatAsArray(value)) {
+    if (arrayish(value)) {
         var to = Math.min(value.length, from + (batch || numenDefaultLength));
         var vals = new Array(to - from);
         for (var i = from; i < to; i++) {
@@ -581,7 +581,7 @@ function keyOrder (a, b) {
 }
 
 function trivial (val) {
-    if (treatAsArray(val)) {
+    if (arrayish(val)) {
         if (val.length > 2) { return false; }
         for (var i=0; i<val.length; i++) {
             if (val[i] && typeof val[i] === 'object') { return false; }
@@ -596,7 +596,7 @@ function trivial (val) {
     return true;
 }
 
-function treatAsArray (obj) {
+function arrayish (obj) {
   if (!Array.isArray(obj)) {
     return false;
   }
