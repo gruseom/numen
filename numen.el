@@ -61,9 +61,9 @@ dropped from the string. Does nothing if TABLE is nil."
   :prefix "numen-"
   :group 'tools)
 
+(defface numen-atom-face '((t (:inherit font-lock-constant-face))) "Face for displaying numbers, strings, symbols in Numen.")
 (defface numen-backtrace-face '((t (:inherit font-lock-variable-name-face))) "Face for backtraces in Numen.")
 (defface numen-backtrace-bold-face '((t (:inherit numen-backtrace-face :weight bold))) "Bold face for backtraces in Numen.")
-(defface numen-boolean-face '((t (:inherit font-lock-builtin-face))) "Face for displaying boolean results in Numen.")
 (defface numen-breakpoint-face '((t (:inherit font-lock-warning-face))) "Face for breakpoint icon in fringe.")
 (defface numen-breaklist-face '((t (:inherit font-lock-comment-face))) "Face for breakpoints in Numen.")
 (defface numen-console-face '((t (:inherit font-lock-doc-face))) "Face for displaying eval process console output in Numen.")
@@ -77,10 +77,8 @@ dropped from the string. Does nothing if TABLE is nil."
 (defface numen-function-face '((t (:inherit font-lock-function-name-face))) "Face for displaying function results in Numen.")
 (defface numen-info-face '((t (:inherit font-lock-variable-name-face))) "Face for informational output in Numen.")
 (defface numen-null-face '((t (:inherit shadow))) "Face for displaying null in Numen.")
-(defface numen-number-face '((t (:inherit font-lock-constant-face))) "Face for displaying numeric results in Numen.")
 (defface numen-object-key-face '((t (:inherit font-lock-keyword-face))) "Face for displaying object keys in Numen.")
 (defface numen-prompt-face '((t (:inherit font-lock-keyword-face))) "Face for the Numen prompt.")
-(defface numen-string-face '((t (:inherit font-lock-string-face))) "Face for displaying string results in Numen.")
 
 (eval-and-compile
   (defvar numen-directory
@@ -1280,8 +1278,8 @@ delete everything before the current prompt."
 (defun numen-draft-value (val view &optional locals-p)
   (acond ((not (hash-table-p val)) (numen-draft-atom "?!" 'numen-error-face))
          ((hget val :null) (numen-draft-atom it 'numen-null-face))
-         ((hget val :bool) (numen-draft-atom it 'numen-boolean-face))
-         ((hget val :num) (numen-draft-atom it 'numen-number-face))
+         ((hget val :bool) (numen-draft-atom it 'numen-atom-face))
+         ((hget val :num) (numen-draft-atom it 'numen-atom-face))
          ((hget val :date) (numen-draft-atom it 'numen-date-face))
          ((hget val :errmsg?) (numen-draft-naked-string val view 'numen-error-face))
          ((hget val :loc?) (numen-draft-script-location val view))
@@ -1308,8 +1306,8 @@ delete everything before the current prompt."
       (append (list :str str) (numen-maybe-ellipsis val view dlen truelen)))))
 
 (defun numen-draft-quoted-string (val view)
-  (let ((delim (numen-str "\"" 'numen-string-face)))
-    (append (numen-draft-naked-string val view 'numen-string-face)
+  (let ((delim (numen-str "\"" 'numen-atom-face)))
+    (append (numen-draft-naked-string val view 'numen-atom-face)
             (list :delim1 delim :delim2 delim))))
 
 (defun numen-draft-function (val)
