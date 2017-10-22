@@ -1,4 +1,4 @@
 numen
 =====
 
-Emacs REPL for Lumen
+Emacs REPL for JavaScript and Lumen
