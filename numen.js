@@ -394,7 +394,7 @@ function represent (value, from, depth, batch) {
     // too deep? return a stub and let client request more if wanted
     if (depth <= 0 && !trivial(value)) {
         return arrayish(value) ? { 'vals' : [], 'truelen' : value.length }
-        : { 'keys' : [], 'vals' : [], 'truelen' : Object.getOwnPropertyNames(value).length };
+        : { 'keys' : [], 'vals' : [], 'truelen' : size(value) };
     }
 
     if (arrayish(value)) {
@@ -406,16 +406,17 @@ function represent (value, from, depth, batch) {
         return { 'vals' : vals, 'truelen' : value.length };
     }
 
-    var allKeys = Object.getOwnPropertyNames(value);
+    var to = Math.min(size(value), from + (batch || numenDefaultLength));
+    var keys = new Array(to - from);
+    var vals = new Array(to - from);
+    var allKeys = keyarray(value);
     if (allKeys.length <= 10000) {
         allKeys.sort(keyOrder);
     }
-    var to = Math.min(allKeys.length, from + (batch || numenDefaultLength));
-    var keys = new Array(to - from);
-    var vals = new Array(to - from);
     for (var i = from; i < to; i++) {
-        keys[i-from] = allKeys[i];
-        vals[i-from] = represent(value[allKeys[i]], null, depth-1);
+        var k = allKeys[i];
+        keys[i-from] = k ? k.toString() : "[undefined]";
+        vals[i-from] = represent(get(value, k), null, depth-1);
     }
     return { 'keys' : keys, 'vals' : vals, 'truelen' : allKeys.length };
 }
@@ -578,6 +579,21 @@ function keyOrder (a, b) {
     a = a.toString().toLowerCase();
     b = b.toString().toLowerCase();
     return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function size (val) {
+  if (val instanceof Map) return val.size;
+  return Object.getOwnPropertyNames(val).length;
+}
+
+function get (val, k) {
+  if (val instanceof Map) return val.get(k);
+  return val[k];
+}
+
+function keyarray (val) {
+  if (val instanceof Map) return Array.from(val.keys());
+  return Object.getOwnPropertyNames(val);
 }
 
 function trivial (val) {
