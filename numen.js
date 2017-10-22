@@ -367,6 +367,10 @@ function represent (value, from, depth, batch) {
     if (typeof value === 'string') {
         return { 'str' : value.substr(from, batch || defaultChars), 'truelen' : value.length }
     }
+    if (typeof value === 'symbol') {
+        var s = Symbol.keyFor(value);
+        return { 'sym' : s || '<symbol>' }
+    }
     if (typeof value !== 'object') {
         throw new Error('Unrecognized type ' + typeof value);
     }

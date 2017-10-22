@@ -1280,6 +1280,7 @@ delete everything before the current prompt."
          ((hget val :null) (numen-draft-atom it 'numen-null-face))
          ((hget val :bool) (numen-draft-atom it 'numen-atom-face))
          ((hget val :num) (numen-draft-atom it 'numen-atom-face))
+         ((hget val :sym) (numen-draft-atom it 'numen-atom-face))
          ((hget val :date) (numen-draft-atom it 'numen-date-face))
          ((hget val :errmsg?) (numen-draft-naked-string val view 'numen-error-face))
          ((hget val :loc?) (numen-draft-script-location val view))
