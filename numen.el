@@ -699,8 +699,8 @@ such buffers whose REPL buffer no longer exists."
     (numen-update-fringe-overlays)))
 
 (defun numen-attach-debugger ()
-  (numen-update-fringe-overlays)
   (when (numen-script-is-being-debugged-p (numen-buffer-script))
+    (numen-update-fringe-overlays)
     (unless buffer-read-only
       (setq numen-made-readonly t)
       (setq buffer-read-only t))))
@@ -2330,5 +2330,5 @@ simply return STR."
     (add-text-properties 0 (length str) props str))
   str)
 
-(add-hook 'javascript-mode-hook 'numen-minor-mode)
+(add-hook 'js-mode-hook 'numen-minor-mode)
 (provide 'numen)

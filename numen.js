@@ -3,14 +3,13 @@ var fs = require('fs');
 var net = require('net');
 var child_process = require('child_process');
 
+var init = !global.D;
 global.D = v8debug.Debug; // the V8 debugger
 var S = null; // server
 var C = null; // client connection
 
-global.require = require;
 global.exports = {};
 global.module = {};
-clearAllBreakpoints(); // clear breakpoint that gets set on startup
 
 // responses
 
@@ -68,20 +67,20 @@ function debugListener (event, exec_state, event_data, data) {
 
 D.setListener(debugListener);
 
-var scriptID = 0;
+global.numenScriptID = global.numenScriptID || 0;
 function uniqueEvalScriptName () {
-    return 'eval' + ++scriptID;
+    return 'eval' + ++numenScriptID;
 }
 
 global.$ = {};
 var maxStoredEvals = 10;
-var evalID = -1;
+global.numenEvalID = -1;
 
 function clientValue (val, depth, batch) {
-    evalID++;
-    $[evalID] = val;
-    delete $[evalID - maxStoredEvals];
-    return { 'value' : represent(val, null, depth, batch), 'id' : evalID };
+    global.numenEvalID++;
+    $[global.numenEvalID] = val;
+    delete $[global.numenEvalID - maxStoredEvals];
+    return { 'value' : represent(val, null, depth, batch), 'id' : global.numenEvalID };
 }
 
 var runningLumen = false;
@@ -172,7 +171,7 @@ function ensureBreakpointsOn (breakpoints) {
 }
 
 function findBreakpoint (scriptObj, line) {
-    var bps = v8debug.GetScriptBreakPoints(scriptObj);
+    var bps = D.scriptBreakPoints(scriptObj);
     for (var i=0; i<bps.length; i++) {
         if (bps[i].line() === line) {
             return bps[i];
@@ -199,6 +198,7 @@ function clearAllBreakpoints () {
     for (var i=0; i<v8bps.length; i++) {
         D.clearBreakPoint(v8bps[i].number());
     }
+    console.log('Cleared breakpoints');
 }
 
 function findScriptByID (script_id) {
@@ -309,14 +309,38 @@ function numenFrames (exec_state) {
 
 function locals (v8FrameMirror) {
     var obj = {};
-    // the real goods are hidden inside a FrameDetails inside a FrameMirror
-    var frm = v8FrameMirror.details_.details_;
-    var argStart = v8debug.kFrameDetailsFirstDynamicIndex;
-    var argCount = frm[v8debug.kFrameDetailsArgumentCountIndex];
-    addLocals(obj, frm, argStart, argCount);
-    var localCount = frm[v8debug.kFrameDetailsLocalCountIndex];
-    var localStart = argStart + argCount * v8debug.kFrameDetailsNameValueSize;
-    addLocals(obj, frm, localStart, localCount);
+    var details = v8FrameMirror.details_;
+    if (details.localCount) {
+        obj[0] = {
+            frame: v8FrameMirror.toText(),
+            caller: details.func()
+        }
+        var count = details.localCount();
+        for (var i=0; i<count; i++) {
+            var name = details.localName(i);
+            if (name !== "arguments" && name !== "caller" && name !== "callee") {
+                var val = details.localValue(i);
+                obj[name] = val;
+            }
+        }
+        var count = details.argumentCount();
+        for (var i=0; i<count; i++) {
+            var name = details.argumentName(i);
+            if (name !== "arguments" && name !== "caller" && name !== "callee") {
+                var val = details.argumentValue(i);
+                obj[name] = val;
+            }
+        }
+    } else {
+        // the real goods are hidden inside a FrameDetails inside a FrameMirror
+        var frm = details.details_;
+        var argStart = v8debug.kFrameDetailsFirstDynamicIndex;
+        var argCount = frm[v8debug.kFrameDetailsArgumentCountIndex];
+        addLocals(obj, frm, argStart, argCount);
+        var localCount = frm[v8debug.kFrameDetailsLocalCountIndex];
+        var localStart = argStart + argCount * v8debug.kFrameDetailsNameValueSize;
+        addLocals(obj, frm, localStart, localCount);
+    }
     return obj;
 }
 
@@ -423,8 +447,8 @@ function represent (value, from, depth, batch) {
 
 // sending requests to client
 
-var clientCallID = 0;
-var clientCallbacks = {};
+global.numenClientCallID = 0;
+global.numenClientCallbacks = {};
 
 function clientCallback (id, errmsg, output) {
     var callback = clientCallbacks[id];
@@ -447,13 +471,13 @@ global.numenReportValue = function (val, depth, batch) { // numen-report-value
 }
 
 global.numenSlimeEval = function (callback, string, package) { // numen-slime-eval
-    var id = clientCallID++;
+    var id = global.numenClientCallID++;
     clientCallbacks[id] = callback;
     clientSend({ 'slime-eval' : string, 'callback-id' : id, 'package' : package });
 }
 
 global.numenEmacsEval = function (callback, string) { // numen-emacs-eval
-    var id = clientCallID++;
+    var id = global.numenClientCallID++;
     clientCallbacks[id] = callback;
     clientSend({ 'emacs-eval' : string, 'callback-id' : id });
 }
@@ -693,7 +717,7 @@ function log (str) {
     console.log(str);
 }
 
-var stdout_write = process.stdout.write;
+global.stdout_write = global.stdout_write || process.stdout.write;
 
 function ourStdout () {
     var args = Array.prototype.slice.call(arguments, 0);
@@ -767,4 +791,10 @@ launchNumen = function (lang, port, logpath, loadpath) {
             }
         });
     }
+}
+
+
+if (init) {
+    clearAllBreakpoints(); // clear breakpoint that gets set on startup
+    init = false;
 }
